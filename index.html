@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f766e" />
+    <title>Mutabaah Yaumiah</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Mutabaah Yaumiah">
+          <span class="brand-mark">م</span>
+          <span>
+            <strong>Mutabaah</strong>
+            <small>Yaumiah</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <button class="summary-button" id="summaryToggle" type="button" aria-expanded="false">Lihat summary</button>
+          <button class="today-button" id="todayButton" type="button">Hari ini</button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Jaga konsistensi, mulai dari hari ini</p>
+          <h1>Catatan kebaikan<br /><em>setiap hari.</em></h1>
+          <p class="hero-copy">
+            Pantau amalan harian dengan sederhana agar langkah kecil tetap terjaga.
+          </p>
+        </div>
+        <div class="hero-decoration" aria-hidden="true">✦</div>
+      </section>
+
+      <section class="date-panel" aria-label="Pilih tanggal">
+        <button class="icon-button" id="previousDay" type="button" aria-label="Hari sebelumnya">←</button>
+        <div class="selected-date">
+          <span id="dayName">Hari ini</span>
+          <strong id="dateLabel">-</strong>
+        </div>
+        <button class="icon-button" id="nextDay" type="button" aria-label="Hari berikutnya">→</button>
+      </section>
+
+      <section class="progress-card">
+        <div class="progress-heading">
+          <div>
+            <p class="section-label">Progres hari ini</p>
+            <strong><span id="completedCount">0</span> dari <span id="totalCount">0</span> selesai</strong>
+          </div>
+          <span class="progress-percent" id="progressPercent">0%</span>
+        </div>
+        <div class="progress-track"><span id="progressBar"></span></div>
+        <p class="encouragement" id="encouragement">Awali dengan satu kebaikan kecil.</p>
+      </section>
+
+      <section class="summary-card" id="summaryCard" hidden>
+        <div class="section-title">
+          <div>
+            <p class="section-label">Ringkasan mingguan</p>
+            <h2>7 hari terakhir</h2>
+          </div>
+          <div class="summary-actions">
+            <button class="download-summary" id="downloadSummary" type="button">↓ Unduh CSV</button>
+            <button class="close-summary" id="summaryClose" type="button">Tutup</button>
+          </div>
+        </div>
+        <div class="summary-stats">
+          <div><strong id="summaryPrayer">0</strong><span>salat / 35</span></div>
+          <div><strong id="summaryPages">0</strong><span>halaman tilawah</span></div>
+          <div><strong id="summaryTargets">0%</strong><span>target tercapai</span></div>
+        </div>
+        <div class="summary-days" id="summaryDays"></div>
+      </section>
+
+      <section class="content-grid">
+        <div class="tasks-section">
+          <div class="section-title">
+            <div>
+              <p class="section-label">Daftar amalan</p>
+              <h2>Target hari ini</h2>
+            </div>
+            <span class="task-count" id="taskCount">0 amalan</span>
+          </div>
+          <div class="task-list" id="taskList"></div>
+          <div class="input-list">
+            <label class="input-card" for="prayerCount">
+              <span class="input-icon">☀</span>
+              <span class="input-content">
+                <strong>Salat wajib</strong>
+                <small>Jumlah salat yang dilakukan hari ini</small>
+              </span>
+              <select id="prayerCount" aria-label="Jumlah salat wajib">
+                <option value="0">0 salat</option>
+                <option value="1">1 salat</option>
+                <option value="2">2 salat</option>
+                <option value="3">3 salat</option>
+                <option value="4">4 salat</option>
+                <option value="5">5 salat</option>
+              </select>
+            </label>
+            <label class="input-card" for="quranPages">
+              <span class="input-icon">☾</span>
+              <span class="input-content">
+                <strong>Tilawah Al-Qur'an</strong>
+                <small>Jumlah halaman yang dibaca hari ini</small>
+              </span>
+              <span class="number-input">
+                <input id="quranPages" type="number" min="0" step="1" placeholder="0" aria-label="Jumlah halaman tilawah" />
+                <span>hal</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <aside class="notes-card">
+          <div class="notes-title">
+            <span class="notes-icon">✎</span>
+            <div>
+              <p class="section-label">Refleksi</p>
+              <h2>Catatan hari ini</h2>
+            </div>
+          </div>
+          <textarea id="notes" placeholder="Tuliskan rasa syukur atau evaluasi hari ini..."></textarea>
+          <span class="save-status" id="saveStatus">Tersimpan otomatis</span>
+        </aside>
+      </section>
+
+      <footer>
+        <span>“Amalan yang paling dicintai Allah adalah yang paling konsisten.”</span>
+        <span class="footer-dot">•</span>
+        <span>Mutabaah Yaumiah</span>
+      </footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
