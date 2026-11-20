@@ -47,7 +47,16 @@ Deno.serve(async (req) => {
       .select("role")
       .eq("id", caller.id)
       .single();
-    if (profileError || !callerProfile) {
+    if (profileError) {
+      console.error("Failed to load caller profile.", {
+        callerId: caller.id,
+        code: profileError.code,
+        message: profileError.message,
+      });
+      return json({ error: "Gagal memeriksa profil pemanggil." }, 500);
+    }
+    if (!callerProfile) {
+      console.warn("Caller profile not found.", { callerId: caller.id });
       return json({ error: "Profil pemanggil tidak ditemukan." }, 403);
     }
 
