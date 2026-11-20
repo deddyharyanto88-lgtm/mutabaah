@@ -299,9 +299,25 @@ create policy "base_item_settings_update"
 --    Email    : superadmin@mutabaah.id
 --    Password : MutabaahSuper#2026
 --    Centang "Auto Confirm User" jika tersedia.
--- 2. Jalankan perintah berikut untuk menjadikan akun tersebut super admin:
---    update public.profiles
---    set role = 'super_admin', created_by = null
---    where email = 'superadmin@mutabaah.id';
+-- 2. Jalankan perintah berikut untuk menjadikan akun tersebut super admin (gunakan insert..on conflict
+--    jika profil belum otomatis terbentuk):
+--    insert into public.profiles (id, email, full_name, role, created_by)
+--    select id, email, coalesce(raw_user_meta_data->>'full_name', ''), 'super_admin', null
+--    from auth.users
+--    where email = 'superadmin@mutabaah.id'
+--    on conflict (id) do update
+--      set role = 'super_admin', created_by = null, email = excluded.email;
 -- 3. Login di aplikasi dengan kredensial di atas. Segera ganti password di
 --    Supabase Dashboard (Authentication > Users) setelah login pertama bila diperlukan.
+
+-- 7) Privileges untuk akses via Supabase API (RLS tetap membatasi baris/aksi)
+grant usage on schema public to anon, authenticated;
+
+grant select, insert, update, delete on table
+  public.profiles,
+  public.mutabaah_entries,
+  public.custom_items,
+  public.base_item_settings
+to anon, authenticated;
+
+grant usage, select on all sequences in schema public to anon, authenticated;
