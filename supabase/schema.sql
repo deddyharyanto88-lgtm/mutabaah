@@ -320,4 +320,6 @@ grant select, insert, update, delete on table
   public.base_item_settings
 to anon, authenticated;
 
+grant select, insert, update on table public.profiles to service_role;
+
 grant usage, select on all sequences in schema public to anon, authenticated;
