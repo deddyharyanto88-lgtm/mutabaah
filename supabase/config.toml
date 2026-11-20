@@ -1,5 +1,8 @@
 [functions.create-user]
 verify_jwt = false
 
+[functions.reset-user-credentials]
+verify_jwt = false
+
 [functions.login]
 verify_jwt = false

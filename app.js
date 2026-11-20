@@ -258,6 +258,7 @@ function updateRoleSections() {
   $("adminSection").hidden = !(isAdmin || isSuper);
   $("createAccountSection").hidden = !(isAdmin || isSuper);
   $("customItemsSection").hidden = !(isAdmin || isSuper);
+  $("credentialManagementSection").hidden = !(isAdmin || isSuper);
   $("baseItemsSection").hidden = !isSuper;
   $("superAdminSection").hidden = !isSuper;
 
@@ -265,6 +266,7 @@ function updateRoleSections() {
     $("adminRecapTitle").textContent = "Rekap user di bawah saya (7 hari terakhir)";
     $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
+    $("credentialManagementHint").textContent = "Ubah ID login dan/atau tetapkan kata sandi baru untuk user yang Anda kelola. Kosongkan kata sandi jika hanya ingin mengganti ID.";
     $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama item yang Anda buat.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
@@ -272,6 +274,7 @@ function updateRoleSections() {
     $("adminRecapTitle").textContent = "Rekap semua user (7 hari terakhir)";
     $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
+    $("credentialManagementHint").textContent = "Ubah ID login dan/atau tetapkan kata sandi baru untuk akun user/admin. Sesama super admin tidak dapat diubah dari panel ini.";
     $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama semua item.";
     $("newUserRoleField").hidden = false;
   }
@@ -784,6 +787,7 @@ async function renderAdminPanels() {
   renderAdminSummary(scopedUsers, byUser);
   renderCustomItemsManager();
   renderBaseItemsManager();
+  renderCredentialManagement(allVisibleProfiles);
   if (currentProfile.role === "super_admin") renderRoleManagement(allVisibleProfiles);
 }
 
@@ -861,6 +865,112 @@ function renderAdminSummary(users, byUser) {
 
   table.append(tbody);
   wrap.replaceChildren(table);
+}
+
+function renderCredentialManagement(profiles) {
+  const wrap = $("credentialManagementList");
+  if (!wrap || !currentProfile) return;
+
+  const targets = profiles.filter((profile) => profile.id !== currentUser.id && (
+    currentProfile.role === "super_admin"
+      ? ["user", "admin"].includes(profile.role)
+      : profile.role === "user" && String(profile.created_by) === String(currentUser.id)
+  ));
+  if (!targets.length) {
+    wrap.textContent = "Belum ada akun yang dapat dikelola.";
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "admin-table";
+  table.innerHTML = `<thead><tr><th>Pengguna</th><th>ID login baru</th><th>Kata sandi baru (opsional)</th><th>Aksi</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  targets.forEach((profile) => {
+    const row = document.createElement("tr");
+    const identity = document.createElement("td");
+    identity.textContent = profile.full_name || profile.login_id || "-";
+    const role = document.createElement("small");
+    role.textContent = roleLabel(profile.role);
+    identity.append(role);
+
+    const loginCell = document.createElement("td");
+    const loginInput = document.createElement("input");
+    loginInput.type = "text";
+    loginInput.className = "credential-input";
+    loginInput.value = profile.login_id;
+    loginInput.required = true;
+    loginInput.minLength = 3;
+    loginInput.maxLength = 32;
+    loginInput.pattern = "[A-Za-z0-9._-]+";
+    loginInput.setAttribute("aria-label", `ID login baru untuk ${profile.full_name || profile.login_id}`);
+    loginCell.append(loginInput);
+
+    const passwordCell = document.createElement("td");
+    const passwordInput = document.createElement("input");
+    passwordInput.type = "password";
+    passwordInput.className = "credential-input";
+    passwordInput.autocomplete = "new-password";
+    passwordInput.minLength = 6;
+    passwordInput.placeholder = "Minimal 6 karakter";
+    passwordInput.setAttribute("aria-label", `Kata sandi baru untuk ${profile.full_name || profile.login_id}`);
+    passwordCell.append(passwordInput);
+
+    const actionCell = document.createElement("td");
+    const saveButton = document.createElement("button");
+    saveButton.type = "button";
+    saveButton.className = "primary-button small";
+    saveButton.textContent = "Simpan";
+    saveButton.addEventListener("click", async () => {
+      if (!loginInput.reportValidity() || !passwordInput.reportValidity()) return;
+      const login_id = loginInput.value.trim().toLowerCase();
+      const password = passwordInput.value;
+      if (login_id === profile.login_id.toLowerCase() && !password) {
+        setCredentialMessage("Masukkan ID login baru atau kata sandi baru.", "error");
+        return;
+      }
+
+      saveButton.disabled = true;
+      setCredentialMessage("Menyimpan kredensial...", "");
+      try {
+        const { data, error } = await supabase.functions.invoke("reset-user-credentials", {
+          body: { user_id: profile.id, login_id, password },
+        });
+        if (error) {
+          let message = error.message || "Gagal mengubah kredensial.";
+          try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+          } catch {}
+          throw new Error(message);
+        }
+        if (data?.error) throw new Error(data.error);
+        profile.login_id = data.login_id;
+        passwordInput.value = "";
+        loginInput.value = data.login_id;
+        setCredentialMessage(`Kredensial ${data.login_id} berhasil diperbarui.`, "success");
+        await renderAdminPanels();
+      } catch (error) {
+        setCredentialMessage(error.message || "Gagal mengubah kredensial.", "error");
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+
+    actionCell.append(saveButton);
+    row.append(identity, loginCell, passwordCell, actionCell);
+    tbody.append(row);
+  });
+
+  table.append(tbody);
+  wrap.replaceChildren(table);
+}
+
+function setCredentialMessage(text, type = "") {
+  const el = $("credentialManagementMessage");
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `auth-message ${type}`.trim();
 }
 
 function renderCustomItemsManager() {

@@ -107,6 +107,8 @@ h1 em { color: var(--teal); font-style: normal; }
 .admin-table td strong, .admin-table td small { display: block; }
 .admin-table td small { margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .admin-table .role-select { min-width: 150px; padding: 7px 9px; font-size: 12px; }
+.credential-input { width: 100%; min-width: 145px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 12px; }
+.credential-input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .danger-button { border: 0; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; color: #8b3a2e; background: #f8e7e4; }
 .danger-button:hover { background: #f1d9d4; }
