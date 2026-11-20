@@ -63,9 +63,9 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
      ```bash
      supabase login
      supabase link --project-ref <PROJECT_REF>
-     supabase functions deploy create-user
+     supabase functions deploy create-user --no-verify-jwt
      ```
-   - Function berada di [`supabase/functions/create-user/index.ts`](supabase/functions/create-user/index.ts). Function ini memverifikasi role pemanggil (super admin boleh buat admin/user, admin hanya boleh buat user) lalu membuat user via service role.
+   - Function berada di [`supabase/functions/create-user/index.ts`](supabase/functions/create-user/index.ts). Function ini memverifikasi role pemanggil (super admin boleh buat admin/user, admin hanya boleh buat user) lalu membuat user via service role. Gunakan `--no-verify-jwt` karena function memvalidasi Authorization/role sendiri; tanpa ini preflight (OPTIONS) dari browser dapat ditolak gateway dan memicu error CORS saat membuat akun dari aplikasi.
 6. Lakukan **bootstrap super admin pertama** seperti bagian di atas.
 7. (Disarankan) Matikan pendaftaran publik agar akun hanya bisa dibuat oleh admin/super admin: **Authentication → Providers → Email** → nonaktifkan "Allow new users to sign up" (sesuaikan dengan kebijakan project Anda).
 
