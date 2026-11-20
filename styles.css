@@ -30,9 +30,12 @@ button { cursor: pointer; }
 .user-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 12px; font-weight: 600; }
 .icon-text-button { border: 0; border-radius: 6px; color: var(--muted); background: transparent; padding: 2px 5px; font-size: 12px; line-height: 1; }
 .icon-text-button:hover { color: var(--teal); background: #edf5f1; }
-.name-edit { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.name-edit input { width: 150px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 12px; }
-.name-edit input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
+.profile-edit { display: grid; grid-template-columns: repeat(3, minmax(110px, 1fr)); align-items: end; gap: 7px; }
+.profile-edit label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.profile-edit input { width: 150px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 12px; }
+.profile-edit input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
+.profile-edit input[readonly] { color: var(--muted); background: #f0f4f1; }
+.profile-edit .link-button { align-self: center; }
 .logout-button { border: 0; border-radius: 7px; color: #8b5a4a; background: #f8ece8; padding: 6px 10px; font-size: 11px; font-weight: 700; }
 .logout-button:hover { background: #f1ddd7; }
 .link-button.small { margin-top: 0; padding: 4px 6px; font-size: 12px; }
@@ -182,7 +185,8 @@ footer { display: flex; justify-content: center; gap: 10px; margin-top: 54px; co
   .topbar { align-items: flex-start; }
   .topbar-right { width: 100%; justify-content: space-between; }
   .user-name { max-width: 110px; }
-  .name-edit input { width: 120px; }
+  .profile-edit { grid-template-columns: 1fr; width: 100%; }
+  .profile-edit input { width: 100%; }
   .auth-card { margin-top: 24px; padding: 22px 18px; }
   .admin-card { padding: 20px 16px; }
   .hero { min-height: 190px; padding: 60px 4px 28px; }

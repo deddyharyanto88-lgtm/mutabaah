@@ -61,13 +61,16 @@ Deno.serve(async (req) => {
     }
 
     const payload = await req.json().catch(() => ({}));
-    const cleanEmail = String(payload.email || "").trim().toLowerCase();
+    const loginId = String(payload.login_id || "").trim().toLowerCase();
     const cleanName = String(payload.full_name || "").trim();
     const cleanPassword = String(payload.password || "");
     const requestedRole = String(payload.role || "user");
 
-    if (!cleanEmail || !cleanPassword) {
-      return json({ error: "Email dan kata sandi wajib diisi." }, 400);
+    if (!/^[a-z0-9._-]{3,32}$/.test(loginId)) {
+      return json({ error: "ID login harus 3–32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung." }, 400);
+    }
+    if (!cleanPassword) {
+      return json({ error: "Kata sandi wajib diisi." }, 400);
     }
     if (cleanPassword.length < 6) {
       return json({ error: "Kata sandi minimal 6 karakter." }, 400);
@@ -88,11 +91,27 @@ Deno.serve(async (req) => {
       return json({ error: "Tidak memiliki izin membuat akun." }, 403);
     }
 
+    const { data: existingProfile, error: existingProfileError } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("login_id", loginId)
+      .maybeSingle();
+    if (existingProfileError) {
+      console.error("Failed to check login ID availability.", {
+        code: existingProfileError.code,
+        message: existingProfileError.message,
+      });
+      return json({ error: "Gagal memeriksa ID login." }, 500);
+    }
+    if (existingProfile) {
+      return json({ error: "ID login sudah digunakan." }, 409);
+    }
+
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-      email: cleanEmail,
+      email: `${loginId}@login.mutabaah.invalid`,
       password: cleanPassword,
       email_confirm: true,
-      user_metadata: { full_name: cleanName },
+      user_metadata: { login_id: loginId, full_name: cleanName },
     });
     if (createError || !created?.user) {
       return json({ error: createError?.message || "Gagal membuat akun." }, 400);
@@ -100,20 +119,28 @@ Deno.serve(async (req) => {
 
     const { error: upsertError } = await adminClient.from("profiles").upsert({
       id: created.user.id,
-      email: cleanEmail,
+      login_id: loginId,
+      email: null,
       full_name: cleanName,
       role: cleanRole,
       created_by: caller.id,
     });
     if (upsertError) {
+      const { error: cleanupError } = await adminClient.auth.admin.deleteUser(created.user.id);
+      if (cleanupError) {
+        console.error("Failed to clean up account after profile creation failed.", {
+          userId: created.user.id,
+          message: cleanupError.message,
+        });
+      }
       return json({ error: upsertError.message }, 400);
     }
 
     return json({
       success: true,
       user: {
+        login_id: loginId,
         id: created.user.id,
-        email: cleanEmail,
         full_name: cleanName,
         role: cleanRole,
       },

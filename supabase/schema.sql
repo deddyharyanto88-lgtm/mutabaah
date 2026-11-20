@@ -4,12 +4,21 @@
 -- 1) Profil pengguna + role + relasi pengelola (created_by)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
+  login_id text not null,
   email text,
   full_name text not null default '',
   role text not null default 'user' check (role in ('super_admin', 'admin', 'user')),
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
+
+-- Upgrade profil lama: gunakan UUID yang sudah ada sebagai ID login awal.
+alter table public.profiles add column if not exists login_id text;
+update public.profiles set login_id = id::text where login_id is null;
+alter table public.profiles alter column login_id set not null;
+update public.profiles set email = lower(trim(email)) where email is not null;
+create unique index if not exists profiles_login_id_lower_key on public.profiles (lower(login_id));
+create unique index if not exists profiles_email_lower_key on public.profiles (lower(email)) where email is not null;
 
 -- upgrade aman: tambahkan kolom created_by jika tabel sudah ada tanpa kolom ini
 alter table public.profiles add column if not exists created_by uuid references public.profiles(id) on delete set null;
@@ -75,10 +84,11 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, role, created_by)
+  insert into public.profiles (id, login_id, email, full_name, role, created_by)
   values (
     new.id,
-    new.email,
+    coalesce(new.raw_user_meta_data->>'login_id', new.id::text),
+    case when new.email like '%@login.mutabaah.invalid' then null else new.email end,
     coalesce(new.raw_user_meta_data->>'full_name', ''),
     'user',
     null
@@ -301,12 +311,12 @@ create policy "base_item_settings_update"
 --    Centang "Auto Confirm User" jika tersedia.
 -- 2. Jalankan perintah berikut untuk menjadikan akun tersebut super admin (gunakan insert..on conflict
 --    jika profil belum otomatis terbentuk):
---    insert into public.profiles (id, email, full_name, role, created_by)
---    select id, email, coalesce(raw_user_meta_data->>'full_name', ''), 'super_admin', null
+--    insert into public.profiles (id, login_id, email, full_name, role, created_by)
+--    select id, coalesce(raw_user_meta_data->>'login_id', id::text), email, coalesce(raw_user_meta_data->>'full_name', ''), 'super_admin', null
 --    from auth.users
 --    where email = 'superadmin@mutabaah.id'
 --    on conflict (id) do update
---      set role = 'super_admin', created_by = null, email = excluded.email;
+--      set role = 'super_admin', created_by = null, login_id = excluded.login_id, email = excluded.email;
 -- 3. Login di aplikasi dengan kredensial di atas. Segera ganti password di
 --    Supabase Dashboard (Authentication > Users) setelah login pertama bila diperlukan.
 

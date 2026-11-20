@@ -244,8 +244,8 @@ function showView(loggedIn) {
 
 function updateUserArea() {
   if (!currentUser || !currentProfile) return;
-  $("userName").textContent = currentProfile.full_name || currentUser.email || "Pengguna";
-  $("userName").title = currentUser.email || "";
+  $("userName").textContent = currentProfile.full_name || currentProfile.login_id || "Pengguna";
+  $("userName").title = `ID: ${currentProfile.login_id}${currentProfile.email ? ` · ${currentProfile.email}` : ""}`;
   const badge = $("userRoleBadge");
   badge.textContent = roleLabel(currentProfile.role);
   badge.className = `role-badge role-${currentProfile.role}`;
@@ -280,7 +280,7 @@ function updateRoleSections() {
 async function loadProfile() {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, created_by")
+    .select("id, login_id, email, full_name, role, created_by")
     .eq("id", currentUser.id)
     .single();
   if (error) throw error;
@@ -760,7 +760,7 @@ async function renderAdminPanels() {
   const to = dateKey(new Date());
 
   const [profilesRes, entriesRes] = await Promise.all([
-    supabase.from("profiles").select("id, email, full_name, role, created_by, created_at").order("created_at", { ascending: true }),
+    supabase.from("profiles").select("id, login_id, email, full_name, role, created_by, created_at").order("created_at", { ascending: true }),
     supabase.from("mutabaah_entries").select("user_id, entry_date, prayer_count, quran_pages, dzikir, sedekah, custom_checks").gte("entry_date", from).lte("entry_date", to),
   ]);
 
@@ -827,7 +827,7 @@ function renderAdminSummary(users, byUser) {
       : "-";
 
     const recap = {
-      name: p.full_name || "-",
+      name: p.full_name || p.login_id || "-",
       email: p.email || "",
       manager: managerLabel,
       base: {},
@@ -838,7 +838,7 @@ function renderAdminSummary(users, byUser) {
 
     const tr = document.createElement("tr");
     const nameTd = document.createElement("td");
-    nameTd.innerHTML = `<strong>${escapeHtml(p.full_name || "-")}</strong><small>${escapeHtml(p.email || "")}</small>`;
+    nameTd.innerHTML = `<strong>${escapeHtml(p.full_name || p.login_id || "-")}</strong><small>ID: ${escapeHtml(p.login_id)}${p.email ? ` · ${escapeHtml(p.email)}` : ""}</small>`;
     tr.append(nameTd);
     if (showManager) tr.append(cell(managerLabel));
 
@@ -1212,12 +1212,12 @@ function renderRoleManagement(profiles) {
   const wrap = $("roleManagement");
   const table = document.createElement("table");
   table.className = "admin-table";
-  table.innerHTML = `<thead><tr><th>Pengguna</th><th>Email</th><th>Role</th><th>Aksi</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Pengguna</th><th>ID login</th><th>Email</th><th>Role</th><th>Aksi</th></tr></thead>`;
   const tbody = document.createElement("tbody");
 
   profiles.forEach((p) => {
     const tr = document.createElement("tr");
-    tr.append(cell(p.full_name || "-"), cell(p.email || "-"));
+    tr.append(cell(p.full_name || p.login_id || "-"), cell(p.login_id), cell(p.email || "-"));
 
     const roleTd = document.createElement("td");
     const select = document.createElement("select");
@@ -1365,50 +1365,73 @@ async function shiftDate(amount) {
   setSaveStatus("Tersimpan");
 }
 
-function openNameEdit() {
+function openProfileEdit() {
   $("userIdentity").hidden = true;
-  $("nameEditForm").hidden = false;
-  $("nameEditInput").value = currentProfile?.full_name || "";
-  $("nameEditInput").focus();
+  $("profileEditForm").hidden = false;
+  $("profileLoginId").value = currentProfile?.login_id || "";
+  $("profileNameInput").value = currentProfile?.full_name || "";
+  $("profileEmailInput").value = currentProfile?.email || "";
+  $("profileNameInput").focus();
 }
 
-function closeNameEdit() {
-  $("nameEditForm").hidden = true;
+function closeProfileEdit() {
+  $("profileEditForm").hidden = true;
   $("userIdentity").hidden = false;
 }
 
-async function handleNameSave(event) {
+async function handleProfileSave(event) {
   event.preventDefault();
   if (!currentProfile) return;
-  const newName = $("nameEditInput").value.trim();
-  if (!newName) return;
-  const btn = $("nameSaveBtn");
+  const full_name = $("profileNameInput").value.trim();
+  const email = $("profileEmailInput").value.trim().toLowerCase() || null;
+  const btn = $("profileSaveBtn");
   btn.disabled = true;
-  const { error } = await supabase.from("profiles").update({ full_name: newName }).eq("id", currentUser.id);
+  const { error } = await supabase.from("profiles").update({ full_name, email }).eq("id", currentUser.id);
   btn.disabled = false;
   if (error) {
-    alert(`Gagal mengubah nama: ${error.message}`);
+    alert(error.code === "23505"
+      ? "Email sudah digunakan akun lain."
+      : `Gagal menyimpan profil: ${error.message}`);
     return;
   }
-  currentProfile.full_name = newName;
+  currentProfile.full_name = full_name;
+  currentProfile.email = email;
   updateUserArea();
-  closeNameEdit();
+  closeProfileEdit();
   if (currentProfile.role !== "user") renderAdminPanels();
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
   if (!supabase) return;
-  const email = $("authEmail").value.trim();
+  const identifier = $("authIdentifier").value.trim();
   const password = $("authPassword").value;
   $("authSubmit").disabled = true;
   setAuthMessage("");
   try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    const { data, error } = await supabase.functions.invoke("login", {
+      body: { identifier, password },
+    });
+    if (error) {
+      let msg = error.message || "ID/email atau kata sandi salah.";
+      try {
+        const body = await error.context?.json();
+        if (body?.error) msg = body.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    if (data?.error) throw new Error(data.error);
+    if (!data?.session?.access_token || !data?.session?.refresh_token) {
+      throw new Error("Respons login tidak lengkap. Coba lagi.");
+    }
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+    if (sessionError) throw sessionError;
     setAuthMessage("Berhasil masuk.", "success");
   } catch (err) {
-    setAuthMessage(err.message || "Gagal masuk.", "error");
+    setAuthMessage(err.message || "ID/email atau kata sandi salah.", "error");
   } finally {
     $("authSubmit").disabled = false;
   }
@@ -1418,7 +1441,7 @@ async function handleCreateAccount(event) {
   event.preventDefault();
   if (!currentProfile) return;
   const full_name = $("newUserName").value.trim();
-  const email = $("newUserEmail").value.trim();
+  const login_id = $("newUserLoginId").value.trim().toLowerCase();
   const password = $("newUserPassword").value;
   const role = currentProfile.role === "super_admin" ? $("newUserRole").value : "user";
   const btn = $("createAccountSubmit");
@@ -1426,7 +1449,7 @@ async function handleCreateAccount(event) {
   setCreateMessage("Membuat akun...", "");
   try {
     const { data, error } = await supabase.functions.invoke("create-user", {
-      body: { email, password, full_name, role },
+      body: { login_id, password, full_name, role },
     });
     if (error) {
       let msg = error.message || "Gagal membuat akun.";
@@ -1437,7 +1460,7 @@ async function handleCreateAccount(event) {
       throw new Error(msg);
     }
     if (data?.error) throw new Error(data.error);
-    setCreateMessage(`Akun berhasil dibuat: ${data.user.email} (${roleLabel(data.user.role)}).`, "success");
+    setCreateMessage(`Akun berhasil dibuat. ID login: ${data.user.login_id} (${roleLabel(data.user.role)}).`, "success");
     $("createAccountForm").reset();
     if (currentProfile.role === "admin") $("newUserRole").value = "user";
     await renderAdminPanels();
@@ -1513,9 +1536,9 @@ function bindEvents() {
   $("authForm").addEventListener("submit", handleAuthSubmit);
   $("logoutButton").addEventListener("click", async () => { await supabase.auth.signOut(); });
 
-  $("editNameButton").addEventListener("click", openNameEdit);
-  $("nameEditCancel").addEventListener("click", closeNameEdit);
-  $("nameEditForm").addEventListener("submit", handleNameSave);
+  $("editProfileButton").addEventListener("click", openProfileEdit);
+  $("profileEditCancel").addEventListener("click", closeProfileEdit);
+  $("profileEditForm").addEventListener("submit", handleProfileSave);
 
   $("previousDay").addEventListener("click", () => shiftDate(-1));
   $("nextDay").addEventListener("click", () => shiftDate(1));
