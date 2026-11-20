@@ -1,10 +1,23 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
 
-const baseTasks = [
-  { id: "dzikir", label: "Dzikir pagi & petang", category: "Dzikir" },
-  { id: "sedekah", label: "Sedekah atau berbagi", category: "Akhlak" },
-];
+const BASE_ITEM_META = {
+  prayer_count: { type: "prayer", icon: "☀", hint: "Jumlah salat yang dilakukan hari ini", category: "Ibadah" },
+  quran_pages: { type: "pages", icon: "☾", hint: "Jumlah halaman yang dibaca hari ini", category: "Tilawah" },
+  dzikir: { type: "check", category: "Dzikir" },
+  sedekah: { type: "check", category: "Akhlak" },
+};
+
+const BASE_ITEM_ORDER = ["prayer_count", "quran_pages", "dzikir", "sedekah"];
+
+function defaultBaseItemSettings() {
+  return [
+    { key: "prayer_count", label: "Salat wajib", is_active: true, sort_order: 1 },
+    { key: "quran_pages", label: "Tilawah Al-Qur'an", is_active: true, sort_order: 2 },
+    { key: "dzikir", label: "Dzikir pagi & petang", is_active: true, sort_order: 3 },
+    { key: "sedekah", label: "Sedekah atau berbagi", is_active: true, sort_order: 4 },
+  ];
+}
 
 const isConfigured = SUPABASE_URL && !SUPABASE_URL.includes("YOUR_PROJECT_REF")
   && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
@@ -16,6 +29,7 @@ let currentUser = null;
 let currentProfile = null;
 let allVisibleProfiles = [];
 let allVisibleCustomItems = [];
+let baseItemSettings = defaultBaseItemSettings();
 let currentEntry = emptyEntry();
 let weekEntries = [];
 let adminRecapRows = [];
@@ -66,6 +80,13 @@ function setCustomItemMessage(text, type = "") {
   el.className = `auth-message ${type}`.trim();
 }
 
+function setBaseItemsMessage(text, type = "") {
+  const el = $("baseItemsMessage");
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `auth-message ${type}`.trim();
+}
+
 function roleLabel(role) {
   if (role === "super_admin") return "Super Admin";
   if (role === "admin") return "Admin";
@@ -86,6 +107,12 @@ function normalizeEntry(data) {
   };
 }
 
+function normalizeEntryWithDate(data) {
+  const e = normalizeEntry(data);
+  e.entry_date = data.entry_date;
+  return e;
+}
+
 function isCustomChecked(entry, itemId) {
   const checks = entry?.custom_checks || {};
   return Boolean(checks[String(itemId)]);
@@ -94,6 +121,59 @@ function isCustomChecked(entry, itemId) {
 function setCustomChecked(entry, itemId, value) {
   if (!entry.custom_checks || typeof entry.custom_checks !== "object") entry.custom_checks = {};
   entry.custom_checks[String(itemId)] = Boolean(value);
+}
+
+function normalizeBaseItemSettings(rows) {
+  const defaults = defaultBaseItemSettings();
+  const byKey = new Map((rows || []).map((r) => [r.key, r]));
+  return defaults.map((def) => {
+    const row = byKey.get(def.key);
+    if (!row) return { ...def };
+    const label = typeof row.label === "string" && row.label.trim() ? row.label.trim() : def.label;
+    const is_active = typeof row.is_active === "boolean" ? row.is_active : Boolean(row.is_active);
+    const sort_order = Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : def.sort_order;
+    return { key: def.key, label, is_active, sort_order };
+  }).sort((a, b) => (a.sort_order - b.sort_order) || BASE_ITEM_ORDER.indexOf(a.key) - BASE_ITEM_ORDER.indexOf(b.key));
+}
+
+function orderedBaseItems() {
+  return [...baseItemSettings].sort((a, b) => (a.sort_order - b.sort_order) || BASE_ITEM_ORDER.indexOf(a.key) - BASE_ITEM_ORDER.indexOf(b.key));
+}
+
+function activeBaseItems() {
+  return orderedBaseItems().filter((i) => i.is_active);
+}
+
+function baseItemConfig(key) {
+  return baseItemSettings.find((i) => i.key === key) || defaultBaseItemSettings().find((i) => i.key === key);
+}
+
+function isBaseItemActive(key) {
+  return Boolean(baseItemConfig(key)?.is_active);
+}
+
+function baseItemLabel(key) {
+  return baseItemConfig(key)?.label || (defaultBaseItemSettings().find((i) => i.key === key)?.label || key);
+}
+
+function baseMeta(key) {
+  return BASE_ITEM_META[key] || { type: "check", category: "Lainnya" };
+}
+
+async function loadBaseItemSettings() {
+  if (!supabase) {
+    baseItemSettings = defaultBaseItemSettings();
+    return;
+  }
+  const { data, error } = await supabase
+    .from("base_item_settings")
+    .select("key, label, is_active, sort_order");
+  if (error) {
+    console.warn("Gagal memuat base_item_settings, gunakan default.", error);
+    baseItemSettings = defaultBaseItemSettings();
+    return;
+  }
+  baseItemSettings = normalizeBaseItemSettings(data || []);
 }
 
 function applicableItemsForProfile(profile) {
@@ -121,12 +201,18 @@ function manageableItems() {
   return [];
 }
 
+function isBaseValueDone(key, entry) {
+  const e = entry || emptyEntry();
+  if (key === "prayer_count") return Number(e.prayer_count) > 0;
+  if (key === "quran_pages") return Number(e.quran_pages) > 0;
+  if (key === "dzikir") return Boolean(e.dzikir);
+  if (key === "sedekah") return Boolean(e.sedekah);
+  return false;
+}
+
 function baseCompletedCount(entry) {
   const e = entry || emptyEntry();
-  return (Number(e.prayer_count) > 0 ? 1 : 0)
-    + (Number(e.quran_pages) > 0 ? 1 : 0)
-    + (e.dzikir ? 1 : 0)
-    + (e.sedekah ? 1 : 0);
+  return activeBaseItems().reduce((sum, item) => sum + (isBaseValueDone(item.key, e) ? 1 : 0), 0);
 }
 
 function completedCountForProfile(entry, profile) {
@@ -136,7 +222,7 @@ function completedCountForProfile(entry, profile) {
 }
 
 function totalTargetsForProfile(profile) {
-  return 4 + applicableItemsForProfile(profile).length;
+  return activeBaseItems().length + applicableItemsForProfile(profile).length;
 }
 
 function completedCountForSelf(entry) {
@@ -146,7 +232,7 @@ function completedCountForSelf(entry) {
 }
 
 function totalTargetsForSelf() {
-  return 4 + applicableItemsForSelf().length;
+  return activeBaseItems().length + applicableItemsForSelf().length;
 }
 
 function showView(loggedIn) {
@@ -172,20 +258,21 @@ function updateRoleSections() {
   $("adminSection").hidden = !(isAdmin || isSuper);
   $("createAccountSection").hidden = !(isAdmin || isSuper);
   $("customItemsSection").hidden = !(isAdmin || isSuper);
+  $("baseItemsSection").hidden = !isSuper;
   $("superAdminSection").hidden = !isSuper;
 
   if (isAdmin) {
     $("adminRecapTitle").textContent = "Rekap user di bawah saya (7 hari terakhir)";
-    $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku.";
+    $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Item aktif akan muncul di mutabaah mereka.";
+    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama item yang Anda buat.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
   } else if (isSuper) {
     $("adminRecapTitle").textContent = "Rekap semua user (7 hari terakhir)";
-    $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan yang berlaku.";
+    $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Item aktif akan muncul di mutabaah mereka.";
+    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama semua item.";
     $("newUserRoleField").hidden = false;
   }
 }
@@ -207,7 +294,6 @@ async function loadCustomItems() {
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) {
-    // tabel mungkin belum ada jika schema belum di-upgrade; jangan gagalkan seluruh sesi
     console.error(error);
     allVisibleCustomItems = [];
     return;
@@ -235,12 +321,6 @@ async function loadWeekEntries() {
     .lte("entry_date", dateKey(new Date()));
   if (error) throw error;
   weekEntries = (data || []).map(normalizeEntryWithDate);
-}
-
-function normalizeEntryWithDate(data) {
-  const e = normalizeEntry(data);
-  e.entry_date = data.entry_date;
-  return e;
 }
 
 async function saveEntry() {
@@ -281,14 +361,28 @@ function scheduleSave(immediate = false) {
   saveTimer = setTimeout(() => saveEntry(), 500);
 }
 
+function updateProgressDisplay() {
+  const completed = completedCountForSelf(currentEntry);
+  const totalTargets = totalTargetsForSelf();
+  const percentage = totalTargets ? Math.round((completed / totalTargets) * 100) : 0;
+
+  $("completedCount").textContent = completed;
+  $("totalCount").textContent = totalTargets;
+  $("taskCount").textContent = `${totalTargets} target`;
+  $("progressPercent").textContent = `${percentage}%`;
+  $("progressBar").style.width = `${percentage}%`;
+  $("encouragement").textContent = percentage === 100 && totalTargets > 0
+    ? "Masya Allah, semua target hari ini selesai!"
+    : percentage >= 50 ? "Teruskan, sedikit lagi menuju selesai."
+      : "Awali dengan satu kebaikan kecil.";
+}
+
 function render() {
   if (!currentUser) return;
   const todayKey = dateKey(new Date());
   const isToday = dateKey(selectedDate) === todayKey;
+  const activeBase = activeBaseItems();
   const applicable = applicableItemsForSelf();
-  const completed = completedCountForSelf(currentEntry);
-  const totalTargets = totalTargetsForSelf();
-  const percentage = totalTargets ? Math.round((completed / totalTargets) * 100) : 0;
 
   $("dayName").textContent = isToday
     ? "Hari ini"
@@ -296,76 +390,145 @@ function render() {
   $("dateLabel").textContent = selectedDate.toLocaleDateString("id-ID", {
     day: "numeric", month: "long", year: "numeric",
   });
-  $("completedCount").textContent = completed;
-  $("totalCount").textContent = totalTargets;
-  $("taskCount").textContent = `${totalTargets} target`;
-  $("progressPercent").textContent = `${percentage}%`;
-  $("progressBar").style.width = `${percentage}%`;
   $("notes").value = currentEntry.notes || "";
-  $("prayerCount").value = String(currentEntry.prayer_count || 0);
-  $("quranPages").value = currentEntry.quran_pages ? String(currentEntry.quran_pages) : "";
-  $("encouragement").textContent = percentage === 100
-    ? "Masya Allah, semua target hari ini selesai!"
-    : percentage >= 50 ? "Teruskan, sedikit lagi menuju selesai."
-      : "Awali dengan satu kebaikan kecil.";
+  updateProgressDisplay();
 
-  const list = $("taskList");
+  const dailyItems = $("dailyItems");
   const nodes = [];
 
-  baseTasks.forEach((task) => {
-    const label = document.createElement("label");
-    label.className = "task-item";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = Boolean(currentEntry[task.id]);
-    input.addEventListener("change", () => {
-      currentEntry[task.id] = input.checked;
-      render();
-      scheduleSave(true);
-    });
-    const checkmark = document.createElement("span");
-    checkmark.className = "checkmark";
-    const text = document.createElement("span");
-    text.className = "task-text";
-    text.textContent = task.label;
-    const category = document.createElement("span");
-    category.className = "task-category";
-    category.textContent = task.category;
-    label.append(input, checkmark, text, category);
-    nodes.push(label);
+  activeBase.forEach((item) => {
+    const meta = baseMeta(item.key);
+    if (meta.type === "check") {
+      nodes.push(createCheckItem({
+        label: item.label,
+        category: meta.category || "Amalan",
+        checked: Boolean(currentEntry[item.key]),
+        onChange: (checked) => {
+          currentEntry[item.key] = checked;
+          render();
+          scheduleSave(true);
+        },
+      }));
+    } else if (meta.type === "prayer") {
+      nodes.push(createPrayerCard(item, Number(currentEntry.prayer_count) || 0, (value) => {
+        currentEntry.prayer_count = value;
+        render();
+        scheduleSave(true);
+      }));
+    } else if (meta.type === "pages") {
+      nodes.push(createPagesCard(item, Number(currentEntry.quran_pages) || 0, (value) => {
+        currentEntry.quran_pages = value;
+        updateProgressDisplay();
+        scheduleSave(false);
+      }));
+    }
   });
 
   applicable.forEach((item) => {
-    const label = document.createElement("label");
-    label.className = "task-item";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = isCustomChecked(currentEntry, item.id);
-    input.addEventListener("change", () => {
-      setCustomChecked(currentEntry, item.id, input.checked);
-      render();
-      scheduleSave(true);
-    });
-    const checkmark = document.createElement("span");
-    checkmark.className = "checkmark";
-    const text = document.createElement("span");
-    text.className = "task-text";
-    text.textContent = item.label;
-    const category = document.createElement("span");
-    category.className = "task-category";
-    category.textContent = "Tugas tambahan";
-    label.append(input, checkmark, text, category);
-    nodes.push(label);
+    nodes.push(createCheckItem({
+      label: item.label,
+      category: "Tugas tambahan",
+      checked: isCustomChecked(currentEntry, item.id),
+      onChange: (checked) => {
+        setCustomChecked(currentEntry, item.id, checked);
+        render();
+        scheduleSave(true);
+      },
+    }));
   });
 
-  list.replaceChildren(...nodes);
+  if (nodes.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Belum ada item amalan aktif untuk saat ini.";
+    nodes.push(empty);
+  }
+
+  dailyItems.replaceChildren(...nodes);
   renderSummary();
+}
+
+function createCheckItem({ label, category, checked, onChange }) {
+  const el = document.createElement("label");
+  el.className = "task-item";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.addEventListener("change", () => onChange(input.checked));
+  const checkmark = document.createElement("span");
+  checkmark.className = "checkmark";
+  const text = document.createElement("span");
+  text.className = "task-text";
+  text.textContent = label;
+  const cat = document.createElement("span");
+  cat.className = "task-category";
+  cat.textContent = category;
+  el.append(input, checkmark, text, cat);
+  return el;
+}
+
+function createPrayerCard(item, value, onChange) {
+  const label = document.createElement("label");
+  label.className = "input-card";
+  const icon = document.createElement("span");
+  icon.className = "input-icon";
+  icon.textContent = baseMeta(item.key).icon || "☀";
+  const content = document.createElement("span");
+  content.className = "input-content";
+  const strong = document.createElement("strong");
+  strong.textContent = item.label;
+  const small = document.createElement("small");
+  small.textContent = baseMeta(item.key).hint || "Jumlah salat yang dilakukan hari ini";
+  content.append(strong, small);
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", item.label);
+  for (let i = 0; i <= 5; i += 1) {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `${i} salat`;
+    if (i === Math.max(0, Math.min(5, Number(value) || 0))) opt.selected = true;
+    select.append(opt);
+  }
+  select.addEventListener("change", () => onChange(Number(select.value)));
+  label.append(icon, content, select);
+  return label;
+}
+
+function createPagesCard(item, value, onChange) {
+  const label = document.createElement("label");
+  label.className = "input-card";
+  const icon = document.createElement("span");
+  icon.className = "input-icon";
+  icon.textContent = baseMeta(item.key).icon || "☾";
+  const content = document.createElement("span");
+  content.className = "input-content";
+  const strong = document.createElement("strong");
+  strong.textContent = item.label;
+  const small = document.createElement("small");
+  small.textContent = baseMeta(item.key).hint || "Jumlah halaman yang dibaca hari ini";
+  content.append(strong, small);
+  const wrap = document.createElement("span");
+  wrap.className = "number-input";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.placeholder = "0";
+  input.setAttribute("aria-label", item.label);
+  input.value = value ? String(value) : "";
+  input.addEventListener("input", () => onChange(Math.max(0, Number(input.value) || 0)));
+  const unit = document.createElement("span");
+  unit.textContent = "hal";
+  wrap.append(input, unit);
+  label.append(icon, content, wrap);
+  return label;
 }
 
 function renderSummary() {
   const days = [];
   const cursor = new Date();
   const applicable = applicableItemsForSelf();
+  const activeBase = activeBaseItems();
   for (let index = 6; index >= 0; index -= 1) {
     const date = new Date(cursor);
     date.setDate(cursor.getDate() - index);
@@ -374,61 +537,114 @@ function renderSummary() {
     days.push({ date, data: found || emptyEntry() });
   }
 
-  const totalPrayer = days.reduce((sum, day) => sum + Number(day.data.prayer_count || 0), 0);
-  const totalPages = days.reduce((sum, day) => sum + Number(day.data.quran_pages || 0), 0);
   const totalTargetsPerDay = totalTargetsForSelf();
   const completedTargets = days.reduce((sum, day) => sum + completedCountForSelf(day.data), 0);
-  const denom = days.length * (totalTargetsPerDay || 1);
-  const targetPercentage = Math.round((completedTargets / denom) * 100);
+  const denom = days.length * (totalTargetsPerDay || 0);
+  const targetPercentage = denom ? Math.round((completedTargets / denom) * 100) : 0;
 
-  $("summaryPrayer").textContent = totalPrayer;
-  $("summaryPages").textContent = totalPages;
-  $("summaryTargets").textContent = `${targetPercentage}%`;
+  renderSummaryStats(days, targetPercentage);
 
   const dayLabel = (date) => date.toLocaleDateString("id-ID", { weekday: "short" }).replace(".", "");
-  const maxPages = Math.max(5, ...days.map((day) => Number(day.data.quran_pages || 0)));
+  const charts = $("summaryCharts");
+  const chartNodes = [];
 
-  const statusRows = [
-    { label: "Dzikir", days: days.map((day) => ({ label: dayLabel(day.date), done: Boolean(day.data.dzikir) })) },
-    { label: "Sedekah", days: days.map((day) => ({ label: dayLabel(day.date), done: Boolean(day.data.sedekah) })) },
-    ...applicable.map((item) => ({
+  activeBase.forEach((item) => {
+    if (item.key === "prayer_count") {
+      chartNodes.push(createBarChart({
+        title: item.label,
+        subtitle: "jumlah per hari",
+        max: 5,
+        unit: "salat",
+        tone: "teal",
+        days: days.map((day) => ({
+          label: dayLabel(day.date),
+          value: Number(day.data.prayer_count || 0),
+          display: `${Number(day.data.prayer_count || 0)}/5`,
+        })),
+      }));
+    } else if (item.key === "quran_pages") {
+      const maxPages = Math.max(5, ...days.map((day) => Number(day.data.quran_pages || 0)));
+      chartNodes.push(createBarChart({
+        title: item.label,
+        subtitle: "halaman per hari",
+        max: maxPages,
+        unit: "hal",
+        tone: "gold",
+        days: days.map((day) => ({
+          label: dayLabel(day.date),
+          value: Number(day.data.quran_pages || 0),
+          display: `${Number(day.data.quran_pages || 0)}`,
+        })),
+      }));
+    }
+  });
+
+  const statusRows = [];
+  activeBase.forEach((item) => {
+    if (item.key === "dzikir" || item.key === "sedekah") {
+      statusRows.push({
+        label: item.label,
+        days: days.map((day) => ({ label: dayLabel(day.date), done: Boolean(day.data[item.key]) })),
+      });
+    }
+  });
+  applicable.forEach((item) => {
+    statusRows.push({
       label: item.label,
       days: days.map((day) => ({ label: dayLabel(day.date), done: isCustomChecked(day.data, item.id) })),
-    })),
-  ];
+    });
+  });
 
-  const charts = $("summaryCharts");
-  charts.replaceChildren(
-    createBarChart({
-      title: "Salat wajib",
-      subtitle: "jumlah per hari",
-      max: 5,
-      unit: "salat",
-      tone: "teal",
-      days: days.map((day) => ({
-        label: dayLabel(day.date),
-        value: Number(day.data.prayer_count || 0),
-        display: `${Number(day.data.prayer_count || 0)}/5`,
-      })),
-    }),
-    createBarChart({
-      title: "Tilawah Al-Qur'an",
-      subtitle: "halaman per hari",
-      max: maxPages,
-      unit: "hal",
-      tone: "gold",
-      days: days.map((day) => ({
-        label: dayLabel(day.date),
-        value: Number(day.data.quran_pages || 0),
-        display: `${Number(day.data.quran_pages || 0)}`,
-      })),
-    }),
-    createStatusChart({
-      title: "Dzikir, Sedekah & Tugas Tambahan",
+  if (statusRows.length) {
+    chartNodes.push(createStatusChart({
+      title: "Checklist harian",
       subtitle: "status per hari",
       rows: statusRows,
-    }),
-  );
+    }));
+  }
+
+  if (!chartNodes.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Belum ada item aktif untuk ditampilkan pada ringkasan.";
+    chartNodes.push(empty);
+  }
+
+  charts.replaceChildren(...chartNodes);
+}
+
+function renderSummaryStats(days, targetPercentage) {
+  const wrap = $("summaryStats");
+  if (!wrap) return;
+  const activeBase = activeBaseItems();
+  const nodes = [];
+
+  activeBase.forEach((item) => {
+    if (item.key === "prayer_count") {
+      const totalPrayer = days.reduce((sum, day) => sum + Number(day.data.prayer_count || 0), 0);
+      nodes.push(createStatBox(String(totalPrayer), "salat / 35"));
+    } else if (item.key === "quran_pages") {
+      const totalPages = days.reduce((sum, day) => sum + Number(day.data.quran_pages || 0), 0);
+      nodes.push(createStatBox(String(totalPages), "halaman"));
+    }
+  });
+
+  nodes.push(createStatBox(`${targetPercentage}%`, "target tercapai"));
+
+  if (nodes.length === 1) {
+    // only target box, still fine
+  }
+  wrap.replaceChildren(...nodes);
+}
+
+function createStatBox(value, label) {
+  const div = document.createElement("div");
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  const span = document.createElement("span");
+  span.textContent = label;
+  div.append(strong, span);
+  return div;
 }
 
 function createBarChart({ title, subtitle, max, unit, tone, days }) {
@@ -567,30 +783,40 @@ async function renderAdminPanels() {
 
   renderAdminSummary(scopedUsers, byUser);
   renderCustomItemsManager();
+  renderBaseItemsManager();
   if (currentProfile.role === "super_admin") renderRoleManagement(allVisibleProfiles);
 }
 
 function renderAdminSummary(users, byUser) {
   const wrap = $("adminUsersSummary");
   adminRecapRows = [];
+  const activeBase = activeBaseItems();
+  const showManager = currentProfile.role === "super_admin";
+
   if (!users.length) {
     wrap.textContent = "Belum ada user pada cakupan ini.";
     return;
   }
 
   const profileMap = new Map(allVisibleProfiles.map((p) => [String(p.id), p]));
-  const showManager = currentProfile.role === "super_admin";
   const table = document.createElement("table");
   table.className = "admin-table";
-  table.innerHTML = `<thead><tr>
-    <th>Pengguna</th>${showManager ? "<th>Dikelola oleh</th>" : ""}<th>Salat (7h)</th><th>Halaman (7h)</th><th>Target (7h)</th>
-  </tr></thead>`;
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  headRow.append(th("Pengguna"));
+  if (showManager) headRow.append(th("Dikelola oleh"));
+  activeBase.forEach((item) => {
+    if (item.key === "prayer_count") headRow.append(th(`${item.label} (7h)`));
+    else if (item.key === "quran_pages") headRow.append(th(`${item.label} (7h)`));
+  });
+  headRow.append(th("Target (7h)"));
+  thead.append(headRow);
+  table.append(thead);
+
   const tbody = document.createElement("tbody");
 
   users.forEach((p) => {
     const list = byUser.get(p.id) || [];
-    const prayer = list.reduce((s, e) => s + Number(e.prayer_count || 0), 0);
-    const pages = list.reduce((s, e) => s + Number(e.quran_pages || 0), 0);
     const perDay = totalTargetsForProfile(p);
     const done = list.reduce((s, e) => s + completedCountForProfile(e, p), 0);
     const denom = 7 * perDay;
@@ -600,23 +826,36 @@ function renderAdminSummary(users, byUser) {
       ? `${manager.full_name || manager.email || "-"} (${roleLabel(manager.role)})`
       : "-";
 
-    adminRecapRows.push({
+    const recap = {
       name: p.full_name || "-",
       email: p.email || "",
       manager: managerLabel,
-      prayer,
-      pages,
+      base: {},
       done,
       denom,
       pct,
-    });
+    };
 
     const tr = document.createElement("tr");
-    const name = document.createElement("td");
-    name.innerHTML = `<strong>${escapeHtml(p.full_name || "-")}</strong><small>${escapeHtml(p.email || "")}</small>`;
-    tr.append(name);
+    const nameTd = document.createElement("td");
+    nameTd.innerHTML = `<strong>${escapeHtml(p.full_name || "-")}</strong><small>${escapeHtml(p.email || "")}</small>`;
+    tr.append(nameTd);
     if (showManager) tr.append(cell(managerLabel));
-    tr.append(cell(`${prayer} / 35`), cell(String(pages)), cell(`${pct}% (${done}/${denom})`));
+
+    activeBase.forEach((item) => {
+      if (item.key === "prayer_count") {
+        const prayer = list.reduce((s, e) => s + Number(e.prayer_count || 0), 0);
+        recap.base[item.key] = prayer;
+        tr.append(cell(`${prayer} / 35`));
+      } else if (item.key === "quran_pages") {
+        const pages = list.reduce((s, e) => s + Number(e.quran_pages || 0), 0);
+        recap.base[item.key] = pages;
+        tr.append(cell(String(pages)));
+      }
+    });
+
+    tr.append(cell(`${pct}% (${done}/${denom})`));
+    adminRecapRows.push(recap);
     tbody.append(tr);
   });
 
@@ -644,7 +883,10 @@ function renderCustomItemsManager() {
 
   items.forEach((item) => {
     const tr = document.createElement("tr");
-    tr.append(cell(item.label));
+    const labelTd = document.createElement("td");
+    labelTd.textContent = item.label;
+    labelTd.className = "item-label-cell";
+    tr.append(labelTd);
 
     if (showOwner) {
       const owner = profileMap.get(String(item.created_by));
@@ -666,6 +908,13 @@ function renderCustomItemsManager() {
 
     const actionTd = document.createElement("td");
     actionTd.className = "row-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "secondary-button small";
+    editBtn.textContent = "Ubah nama";
+    editBtn.addEventListener("click", () => beginEditCustomItemLabel(tr, labelTd, item));
+
     const toggleBtn = document.createElement("button");
     toggleBtn.type = "button";
     toggleBtn.className = "secondary-button small";
@@ -695,13 +944,268 @@ function renderCustomItemsManager() {
       await renderAdminPanels();
     });
 
-    actionTd.append(toggleBtn, delBtn);
+    actionTd.append(editBtn, toggleBtn, delBtn);
     tr.append(actionTd);
     tbody.append(tr);
   });
 
   table.append(tbody);
   wrap.replaceChildren(table);
+}
+
+function beginEditCustomItemLabel(row, labelTd, item) {
+  if (row.dataset.editing === "true") return;
+  row.dataset.editing = "true";
+  const original = item.label;
+  labelTd.textContent = "";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "inline-edit-input";
+  input.value = original;
+  input.setAttribute("aria-label", "Nama item");
+  labelTd.append(input);
+  input.focus();
+  input.select();
+
+  const actionTd = row.querySelector(".row-actions");
+  const prevActions = Array.from(actionTd.childNodes);
+  actionTd.replaceChildren();
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "primary-button small";
+  saveBtn.textContent = "Simpan";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "secondary-button small";
+  cancelBtn.textContent = "Batal";
+
+  const finish = async (save) => {
+    if (save) {
+      const newLabel = input.value.trim();
+      if (!newLabel) { input.focus(); return; }
+      if (newLabel === original) {
+        cancel();
+        return;
+      }
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      const { error } = await supabase.from("custom_items").update({ label: newLabel }).eq("id", item.id);
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+      if (error) {
+        alert(`Gagal mengubah nama item: ${error.message}`);
+        return;
+      }
+      await loadCustomItems();
+      render();
+      await renderAdminPanels();
+      return;
+    }
+    cancel();
+  };
+
+  const cancel = () => {
+    row.dataset.editing = "false";
+    labelTd.textContent = original;
+    actionTd.replaceChildren(...prevActions);
+  };
+
+  saveBtn.addEventListener("click", () => finish(true));
+  cancelBtn.addEventListener("click", () => finish(false));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); finish(true); }
+    if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+
+  actionTd.append(saveBtn, cancelBtn);
+}
+
+function renderBaseItemsManager() {
+  const wrap = $("baseItemsList");
+  if (!wrap) return;
+  if (!currentProfile || currentProfile.role !== "super_admin") {
+    wrap.replaceChildren();
+    return;
+  }
+
+  const items = orderedBaseItems();
+  const table = document.createElement("table");
+  table.className = "admin-table";
+  table.innerHTML = `<thead><tr>
+    <th>Urutan</th><th>Item</th><th>Tipe</th><th>Status</th><th>Aksi</th>
+  </tr></thead>`;
+  const tbody = document.createElement("tbody");
+
+  items.forEach((item, index) => {
+    const tr = document.createElement("tr");
+    tr.append(cell(String(index + 1)));
+
+    const labelTd = document.createElement("td");
+    labelTd.className = "item-label-cell";
+    labelTd.textContent = item.label;
+    tr.append(labelTd);
+
+    tr.append(cell(baseTypeLabel(item.key)));
+
+    const statusTd = document.createElement("td");
+    const pill = document.createElement("span");
+    pill.className = `status-pill ${item.is_active ? "active" : "inactive"}`;
+    pill.textContent = item.is_active ? "Aktif" : "Nonaktif";
+    statusTd.append(pill);
+    tr.append(statusTd);
+
+    const actionTd = document.createElement("td");
+    actionTd.className = "row-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "secondary-button small";
+    editBtn.textContent = "Ubah nama";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "secondary-button small";
+    toggleBtn.textContent = item.is_active ? "Nonaktifkan" : "Aktifkan";
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "secondary-button small";
+    upBtn.textContent = "Naik";
+    upBtn.disabled = index === 0;
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "secondary-button small";
+    downBtn.textContent = "Turun";
+    downBtn.disabled = index === items.length - 1;
+
+    editBtn.addEventListener("click", () => beginEditBaseItemLabel(tr, labelTd, item));
+    toggleBtn.addEventListener("click", async () => {
+      await updateBaseItemSetting(item.key, { is_active: !item.is_active }, toggleBtn);
+    });
+    upBtn.addEventListener("click", async () => {
+      if (index === 0) return;
+      await swapBaseItemOrder(item, items[index - 1], upBtn);
+    });
+    downBtn.addEventListener("click", async () => {
+      if (index === items.length - 1) return;
+      await swapBaseItemOrder(item, items[index + 1], downBtn);
+    });
+
+    actionTd.append(editBtn, toggleBtn, upBtn, downBtn);
+    tr.append(actionTd);
+    tbody.append(tr);
+  });
+
+  table.append(tbody);
+  wrap.replaceChildren(table);
+}
+
+function baseTypeLabel(key) {
+  if (key === "prayer_count") return "Khusus: pilihan 0–5 salat";
+  if (key === "quran_pages") return "Khusus: angka halaman";
+  if (key === "dzikir" || key === "sedekah") return "Khusus: checklist";
+  return "Khusus";
+}
+
+function beginEditBaseItemLabel(row, labelTd, item) {
+  if (row.dataset.editing === "true") return;
+  row.dataset.editing = "true";
+  const original = item.label;
+  labelTd.textContent = "";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "inline-edit-input";
+  input.value = original;
+  input.setAttribute("aria-label", "Nama item bawaan");
+  labelTd.append(input);
+  input.focus();
+  input.select();
+
+  const actionTd = row.querySelector(".row-actions");
+  const prevActions = Array.from(actionTd.childNodes);
+  actionTd.replaceChildren();
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "primary-button small";
+  saveBtn.textContent = "Simpan";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "secondary-button small";
+  cancelBtn.textContent = "Batal";
+
+  const cancel = () => {
+    row.dataset.editing = "false";
+    labelTd.textContent = original;
+    actionTd.replaceChildren(...prevActions);
+  };
+
+  const save = async () => {
+    const newLabel = input.value.trim();
+    if (!newLabel) { input.focus(); return; }
+    if (newLabel === original) { cancel(); return; }
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    const ok = await updateBaseItemSetting(item.key, { label: newLabel }, saveBtn, { silentDisable: true });
+    saveBtn.disabled = false;
+    cancelBtn.disabled = false;
+    if (!ok) return;
+  };
+
+  saveBtn.addEventListener("click", save);
+  cancelBtn.addEventListener("click", cancel);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
+    if (e.key === "Escape") { e.preventDefault(); cancel(); }
+  });
+
+  actionTd.append(saveBtn, cancelBtn);
+}
+
+async function updateBaseItemSetting(key, patch, btn, opts = {}) {
+  setBaseItemsMessage("");
+  if (btn && !opts.silentDisable) btn.disabled = true;
+  const payload = { ...patch, updated_at: new Date().toISOString() };
+  const { error } = await supabase.from("base_item_settings").update(payload).eq("key", key);
+  if (btn && !opts.silentDisable) btn.disabled = false;
+  if (error) {
+    const msg = `Gagal memperbarui item bawaan: ${error.message}`;
+    setBaseItemsMessage(msg, "error");
+    return false;
+  }
+  await loadBaseItemSettings();
+  render();
+  if (currentProfile?.role !== "user") {
+    await renderAdminPanels();
+  } else {
+    renderBaseItemsManager();
+  }
+  setBaseItemsMessage("Pengaturan item bawaan diperbarui.", "success");
+  return true;
+}
+
+async function swapBaseItemOrder(a, b, btn) {
+  setBaseItemsMessage("");
+  if (btn) btn.disabled = true;
+  const now = new Date().toISOString();
+  const [r1, r2] = await Promise.all([
+    supabase.from("base_item_settings").update({ sort_order: b.sort_order, updated_at: now }).eq("key", a.key),
+    supabase.from("base_item_settings").update({ sort_order: a.sort_order, updated_at: now }).eq("key", b.key),
+  ]);
+  if (btn) btn.disabled = false;
+  const error = r1.error || r2.error;
+  if (error) {
+    setBaseItemsMessage(`Gagal mengubah urutan: ${error.message}`, "error");
+    return;
+  }
+  await loadBaseItemSettings();
+  render();
+  await renderAdminPanels();
+  setBaseItemsMessage("Urutan item bawaan diperbarui.", "success");
 }
 
 function renderRoleManagement(profiles) {
@@ -762,6 +1266,12 @@ function renderRoleManagement(profiles) {
   wrap.replaceChildren(table);
 }
 
+function th(text) {
+  const el = document.createElement("th");
+  el.textContent = text;
+  return el;
+}
+
 function cell(text) {
   const td = document.createElement("td");
   td.textContent = text;
@@ -789,11 +1299,16 @@ function downloadCsvRows(rows, filename) {
 
 function downloadSummary() {
   const applicable = applicableItemsForSelf();
-  const header = [
-    "Tanggal", "Salat wajib (jumlah)", "Tilawah (halaman)", "Dzikir pagi & petang", "Sedekah atau berbagi",
-    ...applicable.map((i) => i.label),
-    "Target selesai", "Progres harian", "Catatan",
-  ];
+  const activeBase = activeBaseItems();
+  const header = ["Tanggal"];
+  activeBase.forEach((item) => {
+    if (item.key === "prayer_count") header.push(`${item.label} (jumlah)`);
+    else if (item.key === "quran_pages") header.push(`${item.label} (halaman)`);
+    else header.push(item.label);
+  });
+  header.push(...applicable.map((i) => i.label));
+  header.push("Target selesai", "Progres harian", "Catatan");
+
   const rows = [header];
   const cursor = new Date();
   for (let index = 6; index >= 0; index -= 1) {
@@ -803,17 +1318,17 @@ function downloadSummary() {
     const data = weekEntries.find((e) => e.entry_date === key) || emptyEntry();
     const completed = completedCountForSelf(data);
     const total = totalTargetsForSelf();
-    rows.push([
-      key,
-      Number(data.prayer_count) || 0,
-      Number(data.quran_pages) || 0,
-      data.dzikir ? "Ya" : "Tidak",
-      data.sedekah ? "Ya" : "Tidak",
-      ...applicable.map((i) => (isCustomChecked(data, i.id) ? "Ya" : "Tidak")),
-      `${completed}/${total}`,
-      `${total ? Math.round((completed / total) * 100) : 0}%`,
-      data.notes || "",
-    ]);
+    const row = [key];
+    activeBase.forEach((item) => {
+      if (item.key === "prayer_count") row.push(Number(data.prayer_count) || 0);
+      else if (item.key === "quran_pages") row.push(Number(data.quran_pages) || 0);
+      else row.push(data[item.key] ? "Ya" : "Tidak");
+    });
+    applicable.forEach((i) => row.push(isCustomChecked(data, i.id) ? "Ya" : "Tidak"));
+    row.push(`${completed}/${total}`);
+    row.push(`${total ? Math.round((completed / total) * 100) : 0}%`);
+    row.push(data.notes || "");
+    rows.push(row);
   }
   downloadCsvRows(rows, `summary-mutabaah-${dateKey(new Date())}.csv`);
 }
@@ -821,26 +1336,25 @@ function downloadSummary() {
 function downloadRecap() {
   if (!adminRecapRows.length) return;
   const showManager = currentProfile?.role === "super_admin";
-  const header = [
-    "Nama",
-    "Email",
-    ...(showManager ? ["Dikelola oleh"] : []),
-    "Salat (7 hari)",
-    "Halaman tilawah (7 hari)",
-    "Target selesai (7 hari)",
-    "Target maksimum (7 hari)",
-    "Progres (7 hari)",
-  ];
-  const rows = [header, ...adminRecapRows.map((r) => [
-    r.name,
-    r.email,
-    ...(showManager ? [r.manager] : []),
-    `${r.prayer}/35`,
-    String(r.pages),
-    String(r.done),
-    String(r.denom),
-    `${r.pct}%`,
-  ])];
+  const activeBase = activeBaseItems();
+  const header = ["Nama", "Email"];
+  if (showManager) header.push("Dikelola oleh");
+  activeBase.forEach((item) => {
+    if (item.key === "prayer_count") header.push(`${item.label} (7 hari)`);
+    else if (item.key === "quran_pages") header.push(`${item.label} (7 hari)`);
+  });
+  header.push("Target selesai (7 hari)", "Target maksimum (7 hari)", "Progres (7 hari)");
+
+  const rows = [header, ...adminRecapRows.map((r) => {
+    const row = [r.name, r.email];
+    if (showManager) row.push(r.manager);
+    activeBase.forEach((item) => {
+      if (item.key === "prayer_count") row.push(`${r.base[item.key] || 0}/35`);
+      else if (item.key === "quran_pages") row.push(String(r.base[item.key] || 0));
+    });
+    row.push(String(r.done), String(r.denom), `${r.pct}%`);
+    return row;
+  })];
   downloadCsvRows(rows, `rekap-mutabaah-${dateKey(new Date())}.csv`);
 }
 
@@ -968,6 +1482,7 @@ async function bootstrapSession(session) {
     currentProfile = null;
     allVisibleProfiles = [];
     allVisibleCustomItems = [];
+    baseItemSettings = defaultBaseItemSettings();
     currentEntry = emptyEntry();
     weekEntries = [];
     adminRecapRows = [];
@@ -987,7 +1502,7 @@ async function bootstrapSession(session) {
   showView(true);
   updateUserArea();
   updateRoleSections();
-  await loadCustomItems();
+  await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
   await Promise.all([loadEntry(), loadWeekEntries()]);
   render();
   setSaveStatus("Tersimpan");
@@ -1025,19 +1540,9 @@ function bindEvents() {
     currentEntry.notes = event.target.value;
     scheduleSave(false);
   });
-  $("prayerCount").addEventListener("change", (event) => {
-    currentEntry.prayer_count = Number(event.target.value);
-    render();
-    scheduleSave(true);
-  });
-  $("quranPages").addEventListener("input", (event) => {
-    currentEntry.quran_pages = Math.max(0, Number(event.target.value) || 0);
-    render();
-    scheduleSave(false);
-  });
 
   $("refreshAdmin").addEventListener("click", async () => {
-    await loadCustomItems();
+    await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
     render();
     await renderAdminPanels();
   });

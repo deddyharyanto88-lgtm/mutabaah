@@ -107,11 +107,7 @@
               <button class="close-summary" id="summaryClose" type="button">Tutup</button>
             </div>
           </div>
-          <div class="summary-stats">
-            <div><strong id="summaryPrayer">0</strong><span>salat / 35</span></div>
-            <div><strong id="summaryPages">0</strong><span>halaman tilawah</span></div>
-            <div><strong id="summaryTargets">0%</strong><span>target tercapai</span></div>
-          </div>
+          <div class="summary-stats" id="summaryStats"></div>
           <div class="summary-charts" id="summaryCharts" aria-label="Grafik amalan per hari"></div>
         </section>
 
@@ -169,6 +165,18 @@
           <div class="admin-table-wrap" id="customItemsList"></div>
         </section>
 
+        <section class="admin-card" id="baseItemsSection" hidden>
+          <div class="section-title">
+            <div>
+              <p class="section-label">Super Admin</p>
+              <h2>Item bawaan</h2>
+            </div>
+          </div>
+          <p class="admin-hint">Atur label, aktif/nonaktif, dan urutan item bawaan mutabaah (tipe input tetap: salat 0–5, tilawah halaman, dzikir/sedekah checklist). Item nonaktif disembunyikan dan tidak dihitung dalam target/progres/ringkasan/rekap, namun data historis tetap tersimpan.</p>
+          <p class="auth-message" id="baseItemsMessage" aria-live="polite"></p>
+          <div class="admin-table-wrap" id="baseItemsList"></div>
+        </section>
+
         <section class="admin-card" id="superAdminSection" hidden>
           <div class="section-title">
             <div>
@@ -187,37 +195,9 @@
                 <p class="section-label">Daftar amalan</p>
                 <h2>Target hari ini</h2>
               </div>
-              <span class="task-count" id="taskCount">0 amalan</span>
+              <span class="task-count" id="taskCount">0 target</span>
             </div>
-            <div class="task-list" id="taskList"></div>
-            <div class="input-list">
-              <label class="input-card" for="prayerCount">
-                <span class="input-icon">☀</span>
-                <span class="input-content">
-                  <strong>Salat wajib</strong>
-                  <small>Jumlah salat yang dilakukan hari ini</small>
-                </span>
-                <select id="prayerCount" aria-label="Jumlah salat wajib">
-                  <option value="0">0 salat</option>
-                  <option value="1">1 salat</option>
-                  <option value="2">2 salat</option>
-                  <option value="3">3 salat</option>
-                  <option value="4">4 salat</option>
-                  <option value="5">5 salat</option>
-                </select>
-              </label>
-              <label class="input-card" for="quranPages">
-                <span class="input-icon">☾</span>
-                <span class="input-content">
-                  <strong>Tilawah Al-Qur'an</strong>
-                  <small>Jumlah halaman yang dibaca hari ini</small>
-                </span>
-                <span class="number-input">
-                  <input id="quranPages" type="number" min="0" step="1" placeholder="0" aria-label="Jumlah halaman tilawah" />
-                  <span>hal</span>
-                </span>
-              </label>
-            </div>
+            <div class="daily-items" id="dailyItems"></div>
           </div>
 
           <aside class="notes-card">

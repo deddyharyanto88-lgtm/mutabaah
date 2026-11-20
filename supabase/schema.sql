@@ -51,6 +51,22 @@ create table if not exists public.custom_items (
 create index if not exists custom_items_created_by_idx on public.custom_items (created_by);
 create index if not exists custom_items_active_idx on public.custom_items (is_active);
 
+-- 2c) Konfigurasi item bawaan (dikelola super_admin)
+create table if not exists public.base_item_settings (
+  key text primary key check (key in ('prayer_count', 'quran_pages', 'dzikir', 'sedekah')),
+  label text not null check (char_length(trim(label)) > 0),
+  is_active boolean not null default true,
+  sort_order int not null,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.base_item_settings (key, label, is_active, sort_order) values
+  ('prayer_count', 'Salat wajib', true, 1),
+  ('quran_pages', 'Tilawah Al-Qur''an', true, 2),
+  ('dzikir', 'Dzikir pagi & petang', true, 3),
+  ('sedekah', 'Sedekah atau berbagi', true, 4)
+on conflict (key) do nothing;
+
 -- 3) Profil otomatis saat auth.users dibuat
 create or replace function public.handle_new_user()
 returns trigger
@@ -179,6 +195,7 @@ $$;
 alter table public.profiles enable row level security;
 alter table public.mutabaah_entries enable row level security;
 alter table public.custom_items enable row level security;
+alter table public.base_item_settings enable row level security;
 
 -- Bersihkan policy lama (jika upgrade dari schema sebelumnya)
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
@@ -194,6 +211,8 @@ drop policy if exists "custom_items_select" on public.custom_items;
 drop policy if exists "custom_items_insert" on public.custom_items;
 drop policy if exists "custom_items_update" on public.custom_items;
 drop policy if exists "custom_items_delete" on public.custom_items;
+drop policy if exists "base_item_settings_select" on public.base_item_settings;
+drop policy if exists "base_item_settings_update" on public.base_item_settings;
 
 -- profiles: baca sesuai hierarki
 create policy "profiles_select_hierarchy"
@@ -262,6 +281,18 @@ create policy "custom_items_update"
 create policy "custom_items_delete"
   on public.custom_items for delete
   using (created_by = auth.uid() or public.is_super_admin());
+
+-- base_item_settings: konfigurasi item bawaan (global)
+-- Baca: semua pengguna terautentikasi
+create policy "base_item_settings_select"
+  on public.base_item_settings for select
+  using (auth.uid() is not null);
+
+-- Ubah: hanya super_admin
+create policy "base_item_settings_update"
+  on public.base_item_settings for update
+  using (public.is_super_admin())
+  with check (public.is_super_admin());
 
 -- 6) BOOTSTRAP SUPER ADMIN PERTAMA
 -- 1. Buat user di Supabase Dashboard > Authentication > Users > "Add user" > "Create new user"
