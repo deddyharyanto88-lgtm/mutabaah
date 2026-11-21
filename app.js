@@ -1653,42 +1653,6 @@ async function shiftDate(amount) {
   setSaveStatus("Tersimpan");
 }
 
-function openProfileEdit() {
-  $("userIdentity").hidden = true;
-  $("profileEditForm").hidden = false;
-  $("profileLoginId").value = currentProfile?.login_id || "";
-  $("profileNameInput").value = currentProfile?.full_name || "";
-  $("profileEmailInput").value = currentProfile?.email || "";
-  $("profileNameInput").focus();
-}
-
-function closeProfileEdit() {
-  $("profileEditForm").hidden = true;
-  $("userIdentity").hidden = false;
-}
-
-async function handleProfileSave(event) {
-  event.preventDefault();
-  if (!currentProfile) return;
-  const full_name = $("profileNameInput").value.trim();
-  const email = $("profileEmailInput").value.trim().toLowerCase() || null;
-  const btn = $("profileSaveBtn");
-  btn.disabled = true;
-  const { error } = await supabase.from("profiles").update({ full_name, email }).eq("id", currentUser.id);
-  btn.disabled = false;
-  if (error) {
-    alert(error.code === "23505"
-      ? "Email sudah digunakan akun lain."
-      : `Gagal menyimpan profil: ${error.message}`);
-    return;
-  }
-  currentProfile.full_name = full_name;
-  currentProfile.email = email;
-  updateUserArea();
-  closeProfileEdit();
-  if (currentProfile.role !== "user") renderAdminPanels();
-}
-
 async function handleAuthSubmit(event) {
   event.preventDefault();
   if (!supabase) return;
@@ -1824,10 +1788,6 @@ async function bootstrapSession(session) {
 function bindEvents() {
   $("authForm").addEventListener("submit", handleAuthSubmit);
   $("logoutButton").addEventListener("click", async () => { await supabase.auth.signOut(); });
-
-  $("editProfileButton").addEventListener("click", openProfileEdit);
-  $("profileEditCancel").addEventListener("click", closeProfileEdit);
-  $("profileEditForm").addEventListener("submit", handleProfileSave);
 
   $("previousDay").addEventListener("click", () => shiftDate(-1));
   $("nextDay").addEventListener("click", () => shiftDate(1));

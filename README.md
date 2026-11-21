@@ -9,7 +9,6 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 - Navigasi tanggal & progres harian (berdasarkan item aktif)
 - Ringkasan 7 hari terakhir milik sendiri: total mingguan + grafik per item aktif (numerik/checklist bawaan & tugas tambahan)
 - Unduh/output ringkasan 7 hari (CSV) untuk akun sendiri
-- Mengubah nama dan menambahkan/mengubah email profil sendiri; ID login tetap
 - Admin dapat mengganti ID login dan/atau mereset kata sandi user yang dikelolanya; super admin dapat melakukannya untuk akun user/admin
 - Admin dapat menghapus user yang dikelolanya; super admin dapat menghapus akun user/admin
 - Super admin dapat memindahkan user dari satu admin ke admin lain tanpa menghapus riwayat mutabaahnya
@@ -23,9 +22,9 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 
 | Role | Hak akses |
 | --- | --- |
-| `user` | Mengisi mutabaah miliknya sendiri (item bawaan aktif + item tugas tambahan yang ditetapkan untuknya), melihat ringkasan/grafik 7 hari milik sendiri, mengunduh (output) CSV milik sendiri, dan mengganti nama profilnya. User hanya mengisi item sesuai jenis input yang telah ditetapkan admin. |
-| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya (email dapat ditambahkan user dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** dan **menghapus** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (memilih jenis input checklist/angka/isi manual dan mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
-| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** (email dapat ditambahkan pemilik akun dari profilnya) + **mengubah ID login dan/atau mereset kata sandi**, **menghapus akun user/admin**, dan **memindahkan user antar-admin** tanpa menghapus riwayat mutabaah (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (memilih jenis input checklist/angka/isi manual dan mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
+| `user` | Mengisi mutabaah miliknya sendiri (item bawaan aktif + item tugas tambahan yang ditetapkan untuknya), melihat ringkasan/grafik 7 hari milik sendiri, dan mengunduh (output) CSV milik sendiri. User hanya mengisi item sesuai jenis input yang telah ditetapkan admin. |
+| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya + **mengubah ID login dan/atau mereset kata sandi** dan **menghapus** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (memilih jenis input checklist/angka/isi manual dan mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
+| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** + **mengubah ID login dan/atau mereset kata sandi**, **menghapus akun user/admin**, dan **memindahkan user antar-admin** tanpa menghapus riwayat mutabaah (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (memilih jenis input checklist/angka/isi manual dan mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
 
 - **Item bawaan**: salat wajib (0–5), tilawah (halaman), dzikir, sedekah. Super admin dapat mengubah label, status aktif, dan urutan tampil; tipe input/perilaku khusus tetap (tidak dapat diubah menjadi tipe lain). Item checklist baru tetap ditambahkan lewat *Item tugas tambahan*.
 - **Item nonaktif** (bawaan maupun tugas tambahan): disembunyikan dari form pengisian dan **tidak dihitung** dalam target/progres/ringkasan/grafik/rekap & CSV. **Data historis yang tersimpan tetap ada** dan akan tampil/terhitung kembali bila item diaktifkan.
@@ -48,7 +47,7 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
    set role = 'super_admin', created_by = null
    where email = 'superadmin@mutabaah.id';
    ```
-3. Login dengan email awal dan password di atas. ID login awalnya adalah UUID profil (`profiles.login_id`); setelah masuk, pemilik akun dapat mengisi email profil atau mengganti password lewat Supabase Dashboard jika diperlukan.
+3. Login dengan email awal dan password di atas. ID login awalnya adalah UUID profil (`profiles.login_id`); ganti kata sandi lewat Supabase Dashboard jika diperlukan.
 
 > Catatan: kredensial di atas adalah kredensial awal yang disiapkan untuk Anda; pastikan Anda yang menjalankan langkah pembuatan di project Supabase Anda dan simpan/amankan perubahannya.
 
