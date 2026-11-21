@@ -185,8 +185,13 @@
               <select id="customItemType">
                 <option value="check">Checklist</option>
                 <option value="number">Angka (jumlah)</option>
+                <option value="select">Daftar pilihan</option>
                 <option value="text">Isi manual (teks)</option>
               </select>
+            </label>
+            <label id="customItemOptionsField" class="custom-item-options-field" hidden>
+              <span>Opsi pilihan (satu opsi per baris)</span>
+              <textarea id="customItemOptions" rows="4" placeholder="Contoh:&#10;Belum&#10;Sebagian&#10;Selesai"></textarea>
             </label>
             <button type="submit" class="primary-button" id="customItemSubmit">Tambah item isian</button>
           </form>

@@ -52,19 +52,24 @@ create table if not exists public.custom_items (
   id bigint generated always as identity primary key,
   label text not null check (char_length(trim(label)) > 0),
   input_type text not null default 'check'
-    constraint custom_items_input_type_allowed check (input_type in ('check', 'number', 'text')),
+    constraint custom_items_input_type_allowed check (input_type in ('check', 'number', 'text', 'select')),
+  options text[] not null default '{}'::text[],
   created_by uuid not null references public.profiles(id) on delete cascade,
   creator_role text not null check (creator_role in ('admin', 'super_admin')),
   is_active boolean not null default true,
   is_deleted boolean not null default false,
   legacy_key text,
   sort_order numeric,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint custom_items_select_options_valid
+    check (input_type <> 'select' or cardinality(options) >= 2)
 );
 
 -- Upgrade aman: item lama tetap menggunakan checklist.
 alter table public.custom_items
   add column if not exists input_type text not null default 'check';
+alter table public.custom_items
+  add column if not exists options text[] not null default '{}'::text[];
 alter table public.custom_items
   add column if not exists legacy_key text;
 alter table public.custom_items
@@ -74,20 +79,16 @@ alter table public.custom_items
 create unique index if not exists custom_items_legacy_key_key
   on public.custom_items (legacy_key);
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'custom_items_input_type_allowed'
-      and conrelid = 'public.custom_items'::regclass
-  ) then
-    alter table public.custom_items
-      add constraint custom_items_input_type_allowed
-      check (input_type in ('check', 'number', 'text'));
-  end if;
-end;
-$$;
+alter table public.custom_items
+  drop constraint if exists custom_items_input_type_allowed;
+alter table public.custom_items
+  add constraint custom_items_input_type_allowed
+  check (input_type in ('check', 'number', 'text', 'select'));
+alter table public.custom_items
+  drop constraint if exists custom_items_select_options_valid;
+alter table public.custom_items
+  add constraint custom_items_select_options_valid
+  check (input_type <> 'select' or cardinality(options) >= 2);
 
 create index if not exists custom_items_created_by_idx on public.custom_items (created_by);
 create index if not exists custom_items_active_idx on public.custom_items (is_active);

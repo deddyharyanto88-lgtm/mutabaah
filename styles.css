@@ -64,10 +64,14 @@ h1 em { color: var(--teal); font-style: normal; }
 .create-form { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; margin-top: 8px; }
 .create-form.single { grid-template-columns: 1fr auto; }
 .create-form.custom-item-form { grid-template-columns: minmax(180px, 1fr) minmax(150px, .4fr) auto; }
+.create-form .custom-item-options-field { grid-column: 1 / -1; }
+.create-form .custom-item-options-field[hidden] { display: none; }
 .create-form .grow { min-width: 0; }
 .auth-form label, .create-form label { display: grid; gap: 6px; color: var(--ink); font-size: 13px; font-weight: 600; }
-.auth-form input, .create-form input, .create-form select, .role-select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 14px; }
+.auth-form input, .create-form input, .create-form select, .create-form textarea, .role-select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 14px; }
+.create-form textarea { resize: vertical; }
 .auth-form input:focus, .create-form input:focus, .create-form select:focus, .role-select:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
+.create-form textarea:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .create-form .primary-button { margin-top: 0; height: 44px; }
 .primary-button, .secondary-button { border: 0; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; }
 .primary-button { margin-top: 4px; padding: 12px 16px; color: white; background: linear-gradient(120deg, #0d625d, #16897e); }
@@ -151,6 +155,7 @@ h2 { margin: 0; font-size: 21px; letter-spacing: -.5px; }
 .input-content strong { font-size: 14px; }
 .input-content small { color: var(--muted); font-size: 11px; }
 .input-card select, .number-input { margin-left: auto; }
+.custom-value-card select { width: min(220px, 42%); }
 .custom-value-card input { width: min(220px, 42%); margin-left: auto; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--teal-dark); background: #fbfcfa; font: inherit; font-size: 13px; }
 .custom-value-card input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .input-card select, .number-input input { padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--teal-dark); background: #fbfcfa; font-size: 12px; font-weight: 600; }

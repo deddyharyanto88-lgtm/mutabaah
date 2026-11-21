@@ -107,6 +107,12 @@ function setCustomItemMessage(text, type = "") {
   el.className = `auth-message ${type}`.trim();
 }
 
+function updateCustomItemOptionsField() {
+  const isSelect = $("customItemType").value === "select";
+  $("customItemOptionsField").hidden = !isSelect;
+  $("customItemOptions").required = isSelect;
+}
+
 function roleLabel(role) {
   if (role === "super_admin") return "Super Admin";
   if (role === "admin") return "Admin";
@@ -271,7 +277,7 @@ async function loadProfile() {
 async function loadCustomItems() {
   const { data, error } = await supabase
     .from("custom_items")
-    .select("id, label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key, sort_order, created_at")
+    .select("id, label, input_type, options, created_by, creator_role, is_active, is_deleted, legacy_key, sort_order, created_at")
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
@@ -295,6 +301,7 @@ async function loadCustomItems() {
     }
     allVisibleCustomItems = (legacyResult.data || []).map((item, index) => ({
       ...item,
+      options: [],
       is_deleted: false,
       legacy_key: null,
       sort_order: index * 1000,
@@ -473,31 +480,52 @@ function createCustomValueItem({ item, value, onChange }) {
   label.className = "input-card custom-value-card";
   const icon = document.createElement("span");
   icon.className = "input-icon";
-  icon.textContent = item.input_type === "number" ? "#" : "✎";
+  icon.textContent = item.input_type === "number" ? "#" : item.input_type === "select" ? "▾" : "✎";
   const content = document.createElement("span");
   content.className = "input-content";
   const strong = document.createElement("strong");
   strong.textContent = item.label;
   const small = document.createElement("small");
-  small.textContent = item.input_type === "number" ? "Isi angka" : "Isi manual";
+  small.textContent = item.input_type === "number"
+    ? "Isi angka"
+    : item.input_type === "select" ? "Pilih satu opsi" : "Isi manual";
   content.append(strong, small);
-  const input = document.createElement("input");
-  input.className = "custom-value-input";
-  input.type = item.input_type === "number" ? "number" : "text";
-  if (item.input_type === "number") {
-    input.min = "0";
-    input.step = "1";
-  }
-  input.value = value === "" || value == null ? "" : String(value);
-  input.setAttribute("aria-label", item.label);
-  input.addEventListener("input", () => {
+  if (item.input_type === "select") {
+    const select = document.createElement("select");
+    select.className = "custom-value-input";
+    select.setAttribute("aria-label", item.label);
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Pilih...";
+    select.append(placeholder);
+    (Array.isArray(item.options) ? item.options : []).forEach((option) => {
+      const optionElement = document.createElement("option");
+      optionElement.value = option;
+      optionElement.textContent = option;
+      select.append(optionElement);
+    });
+    select.value = value === "" || value == null ? "" : String(value);
+    select.addEventListener("change", () => onChange(select.value));
+    label.append(icon, content, select);
+  } else {
+    const input = document.createElement("input");
+    input.className = "custom-value-input";
+    input.type = item.input_type === "number" ? "number" : "text";
     if (item.input_type === "number") {
-      onChange(input.value === "" ? "" : Number(input.value));
-    } else {
-      onChange(input.value);
+      input.min = "0";
+      input.step = "1";
     }
-  });
-  label.append(icon, content, input);
+    input.value = value === "" || value == null ? "" : String(value);
+    input.setAttribute("aria-label", item.label);
+    input.addEventListener("input", () => {
+      if (item.input_type === "number") {
+        onChange(input.value === "" ? "" : Number(input.value));
+      } else {
+        onChange(input.value);
+      }
+    });
+    label.append(icon, content, input);
+  }
   return label;
 }
 
@@ -1322,6 +1350,7 @@ function beginEditCustomItemLabel(row, labelTd, item) {
 
 function customItemTypeLabel(type) {
   if (type === "number") return "Angka (jumlah)";
+  if (type === "select") return "Daftar pilihan";
   if (type === "text") return "Isi manual";
   return "Checklist";
 }
@@ -1554,6 +1583,15 @@ async function handleCreateCustomItem(event) {
   if (!currentProfile || currentProfile.role === "user") return;
   const label = $("customItemLabel").value.trim();
   if (!label) return;
+  const inputType = $("customItemType").value;
+  const options = inputType === "select"
+    ? $("customItemOptions").value.split(/\r?\n/).map((option) => option.trim()).filter(Boolean)
+    : [];
+  if (inputType === "select" && (options.length < 2
+    || new Set(options.map((option) => option.toLowerCase())).size !== options.length)) {
+    setCustomItemMessage("Masukkan minimal 2 opsi yang berbeda, masing-masing di baris terpisah.", "error");
+    return;
+  }
   const btn = $("customItemSubmit");
   btn.disabled = true;
   setCustomItemMessage("Menyimpan item...", "");
@@ -1561,7 +1599,8 @@ async function handleCreateCustomItem(event) {
   try {
     const { error } = await supabase.from("custom_items").insert({
       label,
-      input_type: $("customItemType").value,
+      input_type: inputType,
+      options,
       created_by: currentUser.id,
       creator_role: currentProfile.role,
       is_active: true,
@@ -1570,6 +1609,7 @@ async function handleCreateCustomItem(event) {
     if (error) throw error;
     itemSaved = true;
     $("customItemForm").reset();
+    updateCustomItemOptionsField();
     const itemsLoaded = await loadCustomItems();
     if (!itemsLoaded) return;
     render();
@@ -1626,6 +1666,8 @@ async function bootstrapSession(session) {
 function bindEvents() {
   $("authForm").addEventListener("submit", handleAuthSubmit);
   $("logoutButton").addEventListener("click", async () => { await supabase.auth.signOut(); });
+  $("customItemType").addEventListener("change", updateCustomItemOptionsField);
+  updateCustomItemOptionsField();
 
   if (typeof window !== "undefined") {
     if ("BroadcastChannel" in window) {

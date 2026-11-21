@@ -5,7 +5,7 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 ## Fitur
 
 - Login menggunakan ID atau email dan kata sandi; tidak ada pendaftaran publik
-- Pencatatan amalan harian per akun melalui satu kategori **item isian** (checklist, angka, atau teks) dan catatan refleksi
+- Pencatatan amalan harian per akun melalui satu kategori **item isian** (checklist, angka, daftar pilihan, atau teks) dan catatan refleksi
 - Navigasi tanggal & progres harian (berdasarkan item aktif)
 - Ringkasan 7 hari terakhir milik sendiri: total mingguan + grafik per item isian aktif
 - Unduh/output ringkasan 7 hari (CSV) untuk akun sendiri
@@ -28,7 +28,7 @@ Semua item amalan dikelola sebagai satu kategori **Item isian**. Admin dapat men
 | `admin` | Semua hak `user` + membuat akun user di bawahnya + mengubah ID login/kata sandi dan menghapus user yang dikelolanya + menambah/mengelola item isian untuk user di bawah otorisasinya + melihat dan mengunduh rekap user yang dikelolanya. |
 | `super_admin` | Semua hak `user` + membuat akun admin/user + mengelola akun dan role + memindahkan user antar-admin + menambah/mengelola item isian global atau item buatan admin + melihat dan mengunduh rekap semua user. |
 
-- **Item isian**: item `super_admin` berlaku untuk semua user; item `admin` berlaku untuk user yang dikelolanya (`created_by` = admin tersebut). Jenis input dapat berupa checklist, angka, atau teks. Pembuat dan super admin dapat mengubah nama, mengaktifkan/nonaktifkan, menghapus, atau memulihkan item. Penghapusan bersifat lunak; nilai historis tetap tersimpan. Nilai harian disimpan pada `custom_checks`.
+- **Item isian**: item `super_admin` berlaku untuk semua user; item `admin` berlaku untuk user yang dikelolanya (`created_by` = admin tersebut). Jenis input dapat berupa checklist, angka, daftar pilihan (opsi ditentukan saat membuat item), atau teks. Pembuat dan super admin dapat mengubah nama, mengaktifkan/nonaktifkan, menghapus, atau memulihkan item. Penghapusan bersifat lunak; nilai historis tetap tersimpan. Nilai harian disimpan pada `custom_checks`.
 - **Migrasi item lama**: empat item yang sebelumnya bawaan (salat wajib, tilawah, dzikir, sedekah) dikonversi menjadi item isian. Jalankan ulang `supabase/schema.sql` setelah bootstrap super admin untuk membuat item konversi dan memindahkan data historisnya. Sebelum migrasi dijalankan, formulir tetap menampilkan dan menyimpan item bawaan beserta nilai lamanya.
 - Akun baru selalu dikaitkan ke pembuatnya (`created_by`). `admin` hanya dapat melihat/merekap user yang ia buat (berada di bawahnya). `super_admin` dapat merekap seluruh `user` (baik yang dikelola admin maupun yang dibuat langsung oleh super admin).
 - Pemindahan user mengganti `created_by` ke admin tujuan; akun dan seluruh entri mutabaah user tetap sama. Penghapusan user menghapus akun autentikasi dan data terkait. Jika admin dihapus, user yang dikelolanya tidak ikut dihapus dan perlu dipindahkan ke admin lain oleh super admin.
@@ -55,7 +55,7 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
 ## Setup Supabase
 
 1. Buat project di [Supabase](https://supabase.com).
-2. Buka **SQL Editor** dan jalankan isi file [`supabase/schema.sql`](supabase/schema.sql) untuk membuat tabel, trigger, fungsi/hierarki role, dan kebijakan RLS. Setelah membuat dan mempromosikan super admin pertama, jalankan ulang schema agar item lama dikonversi dan data historis dipindahkan ke item isian (aman/idempoten).
+2. Buka **SQL Editor** dan jalankan isi file [`supabase/schema.sql`](supabase/schema.sql) untuk membuat tabel, trigger, fungsi/hierarki role, dan kebijakan RLS. Setelah membuat dan mempromosikan super admin pertama, jalankan ulang schema agar item lama dikonversi dan data historis dipindahkan ke item isian (aman/idempoten). Untuk project yang sudah memakai aplikasi, jalankan ulang schema agar kolom dan validasi opsi dropdown tersedia.
 3. Buka **Project Settings → API** dan salin **Project URL** serta **anon/public key**.
 4. Isi konfigurasi di [`supabase-config.js`](supabase-config.js):
    ```js
@@ -100,8 +100,8 @@ Lalu buka <http://localhost:8000>.
 ## Struktur Data
 
 - `profiles`: profil pengguna (`id`, `login_id`, `email` opsional, `full_name`, `role` = `user`/`admin`/`super_admin`, `created_by`, `created_at`). `created_by` menyimpan siapa yang membuat/mengelola akun (hierarki). Upgrade schema mengisi ID login akun lama dengan UUID profilnya.
-- `mutabaah_entries`: entri harian per pengguna (`entry_date`, `notes`, `custom_checks`), unik per `(user_id, entry_date)`. Item isian menyimpan checklist, angka, atau teks di `custom_checks`.
-- `custom_items`: semua item isian (`label`, `input_type`, `created_by`, `creator_role`, `is_active`, `is_deleted`, `sort_order`). `sort_order` hanya mengatur posisi tampilan; `legacy_key` menandai item hasil konversi empat item lama.
+- `mutabaah_entries`: entri harian per pengguna (`entry_date`, `notes`, `custom_checks`), unik per `(user_id, entry_date)`. Item isian menyimpan checklist, angka, pilihan, atau teks di `custom_checks`.
+- `custom_items`: semua item isian (`label`, `input_type`, `options`, `created_by`, `creator_role`, `is_active`, `is_deleted`, `sort_order`). Opsi dropdown disimpan dalam `options`; `sort_order` hanya mengatur posisi tampilan; `legacy_key` menandai item hasil konversi empat item lama.
 - Kolom lama pada `mutabaah_entries` dan tabel `base_item_settings` tetap dipakai sebagai kompatibilitas agar empat item bawaan dan nilainya tetap tampil sebelum migrasi selesai. Setelah item dikonversi, nilai harian disimpan pada `custom_checks`; kolom lama tetap dipertahankan.
 
 Lihat definisi lengkap, helper hierarki, dan kebijakan RLS di [`supabase/schema.sql`](supabase/schema.sql).
