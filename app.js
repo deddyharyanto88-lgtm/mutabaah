@@ -11,6 +11,12 @@ let currentUser = null;
 let currentProfile = null;
 let allVisibleProfiles = [];
 let allVisibleCustomItems = [];
+let baseItemSettings = [
+  { key: "prayer_count", label: "Salat wajib", is_active: true, sort_order: 1 },
+  { key: "quran_pages", label: "Tilawah Al-Qur'an", is_active: true, sort_order: 2 },
+  { key: "dzikir", label: "Dzikir pagi & petang", is_active: true, sort_order: 3 },
+  { key: "sedekah", label: "Sedekah atau berbagi", is_active: true, sort_order: 4 },
+];
 let currentEntry = emptyEntry();
 let weekEntries = [];
 let adminRecapRows = [];
@@ -21,7 +27,14 @@ let recapChannel = null;
 const $ = (id) => document.getElementById(id);
 
 function emptyEntry() {
-  return { notes: "", custom_checks: {} };
+  return {
+    prayer_count: 0,
+    quran_pages: 0,
+    dzikir: false,
+    sedekah: false,
+    notes: "",
+    custom_checks: {},
+  };
 }
 
 const dateKey = (date) => {
@@ -102,6 +115,10 @@ function roleLabel(role) {
 function normalizeEntry(data) {
   if (!data) return emptyEntry();
   return {
+    prayer_count: data.prayer_count ?? 0,
+    quran_pages: data.quran_pages ?? 0,
+    dzikir: Boolean(data.dzikir),
+    sedekah: Boolean(data.sedekah),
     notes: data.notes || "",
     custom_checks: (data.custom_checks && typeof data.custom_checks === "object" && !Array.isArray(data.custom_checks))
       ? data.custom_checks
@@ -116,12 +133,14 @@ function normalizeEntryWithDate(data) {
   return e;
 }
 
-function customItemValue(entry, itemId) {
-  return entry?.custom_checks?.[String(itemId)] ?? "";
+function customItemValue(entry, item) {
+  const value = entry?.custom_checks?.[String(item.id)];
+  if (value !== undefined && value !== null) return value;
+  return item.legacy_key ? entry?.[item.legacy_key] ?? "" : "";
 }
 
 function isCustomItemDone(entry, item) {
-  const value = customItemValue(entry, item.id);
+  const value = customItemValue(entry, item);
   if (item.input_type === "check") return value === true;
   if (typeof value === "number") {
     return item.legacy_key ? value > 0 : Number.isFinite(value);
@@ -129,24 +148,44 @@ function isCustomItemDone(entry, item) {
   return typeof value === "string" && value.trim() !== "";
 }
 
-function setCustomItemValue(entry, itemId, value) {
+function setCustomItemValue(entry, item, value) {
   if (!entry.custom_checks || typeof entry.custom_checks !== "object") entry.custom_checks = {};
-  entry.custom_checks[String(itemId)] = value;
+  entry.custom_checks[String(item.id)] = value;
+  if (item.legacy_key) entry[item.legacy_key] = value;
+}
+
+function legacyItemsForProfile(profile) {
+  if (!profile) return [];
+  return baseItemSettings
+    .filter((setting) => setting.is_active
+      && !allVisibleCustomItems.some((item) => item.legacy_key === setting.key))
+    .map((setting) => ({
+      id: `legacy:${setting.key}`,
+      label: setting.label,
+      input_type: setting.key === "prayer_count" || setting.key === "quran_pages" ? "number" : "check",
+      created_by: null,
+      creator_role: "super_admin",
+      is_active: true,
+      is_deleted: false,
+      legacy_key: setting.key,
+      created_at: "",
+    }));
 }
 
 function applicableItemsForProfile(profile) {
   if (!profile) return [];
+  const legacyItems = legacyItemsForProfile(profile);
   if (profile.role === "user") {
-    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && (
+    return [...legacyItems, ...allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && (
       i.creator_role === "super_admin" ||
       (i.creator_role === "admin" && String(i.created_by) === String(profile.created_by))
-    ));
+    ))];
   }
   if (profile.role === "admin") {
-    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin");
+    return [...legacyItems, ...allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin")];
   }
   if (profile.role === "super_admin") {
-    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin");
+    return [...legacyItems, ...allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin")];
   }
   return [];
 }
@@ -233,16 +272,42 @@ async function loadCustomItems() {
     .order("id", { ascending: true });
   if (error) {
     console.error(error);
-    allVisibleCustomItems = [];
+    const legacyResult = await supabase
+      .from("custom_items")
+      .select("id, label, input_type, created_by, creator_role, is_active, created_at")
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+    if (legacyResult.error) {
+      console.error(legacyResult.error);
+      allVisibleCustomItems = [];
+      return;
+    }
+    allVisibleCustomItems = (legacyResult.data || []).map((item) => ({
+      ...item,
+      is_deleted: false,
+      legacy_key: null,
+    }));
     return;
   }
   allVisibleCustomItems = data || [];
 }
 
+async function loadBaseItemSettings() {
+  const { data, error } = await supabase
+    .from("base_item_settings")
+    .select("key, label, is_active, sort_order")
+    .order("sort_order", { ascending: true });
+  if (error) {
+    console.error(error);
+    return;
+  }
+  if (data?.length) baseItemSettings = data;
+}
+
 async function loadEntry() {
   const { data, error } = await supabase
     .from("mutabaah_entries")
-    .select("entry_date, notes, custom_checks")
+    .select("entry_date, prayer_count, quran_pages, dzikir, sedekah, notes, custom_checks")
     .eq("user_id", currentUser.id)
     .eq("entry_date", dateKey(selectedDate))
     .maybeSingle();
@@ -253,7 +318,7 @@ async function loadEntry() {
 async function loadWeekEntries() {
   const { data, error } = await supabase
     .from("mutabaah_entries")
-    .select("entry_date, notes, custom_checks")
+    .select("entry_date, prayer_count, quran_pages, dzikir, sedekah, notes, custom_checks")
     .eq("user_id", currentUser.id)
     .gte("entry_date", sevenDaysAgoKey())
     .lte("entry_date", dateKey(new Date()));
@@ -267,6 +332,10 @@ async function saveEntry() {
   const payload = {
     user_id: currentUser.id,
     entry_date: dateKey(selectedDate),
+    prayer_count: Number(currentEntry.prayer_count) || 0,
+    quran_pages: Number(currentEntry.quran_pages) || 0,
+    dzikir: Boolean(currentEntry.dzikir),
+    sedekah: Boolean(currentEntry.sedekah),
     notes: currentEntry.notes || "",
     custom_checks: currentEntry.custom_checks || {},
     updated_at: new Date().toISOString(),
@@ -337,7 +406,7 @@ function render() {
         category: "Item isian",
         checked: isCustomItemDone(currentEntry, item),
         onChange: (checked) => {
-          setCustomItemValue(currentEntry, item.id, checked);
+          setCustomItemValue(currentEntry, item, checked);
           render();
           scheduleSave(true);
         },
@@ -345,9 +414,9 @@ function render() {
     } else {
       nodes.push(createCustomValueItem({
         item,
-        value: customItemValue(currentEntry, item.id),
+        value: customItemValue(currentEntry, item),
         onChange: (value) => {
-          setCustomItemValue(currentEntry, item.id, value);
+          setCustomItemValue(currentEntry, item, value);
           updateProgressDisplay();
           scheduleSave(false);
         },
@@ -444,7 +513,7 @@ function renderSummary() {
   const numericItems = applicable.filter((item) => item.input_type === "number");
   numericItems.forEach((item, index) => {
     const values = days.map((day) => {
-      const value = customItemValue(day.data, item.id);
+      const value = customItemValue(day.data, item);
       return typeof value === "number" && Number.isFinite(value) ? value : 0;
     });
     const max = Math.max(1, ...values);
@@ -493,7 +562,7 @@ function renderSummaryStats(days, targetPercentage) {
 
   applicable.filter((item) => item.input_type === "number").forEach((item) => {
     const total = days.reduce((sum, day) => {
-      const value = customItemValue(day.data, item.id);
+      const value = customItemValue(day.data, item);
       return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
     }, 0);
     const label = item.legacy_key === "quran_pages" ? "halaman" : "jumlah";
@@ -654,7 +723,7 @@ async function renderAdminPanels() {
   if (scopedUsers.length) {
     const entriesRes = await supabase
       .from("mutabaah_entries")
-      .select("user_id, entry_date, custom_checks")
+      .select("user_id, entry_date, prayer_count, quran_pages, dzikir, sedekah, custom_checks")
       .in("user_id", scopedUsers.map((p) => p.id))
       .gte("entry_date", from)
       .lte("entry_date", to)
@@ -758,13 +827,13 @@ function renderAdminSummary(users, byUser) {
       let display;
       if (item.input_type === "number") {
         const total = list.reduce((sum, entry) => {
-          const value = customItemValue(entry, item.id);
+          const value = customItemValue(entry, item);
           return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
         }, 0);
         display = String(total);
       } else if (item.input_type === "text") {
         const filled = list.filter((entry) => {
-          const value = customItemValue(entry, item.id);
+          const value = customItemValue(entry, item);
           return typeof value === "string" && value.trim() !== "";
         }).length;
         display = `${filled} / ${dayCount}`;
@@ -1285,7 +1354,7 @@ function downloadSummary() {
     const total = totalTargetsForSelf();
     const row = [key];
     applicable.forEach((i) => {
-      const value = customItemValue(data, i.id);
+      const value = customItemValue(data, i);
       row.push(i.input_type === "check" ? (isCustomItemDone(data, i) ? "Ya" : "Tidak") : value);
     });
     row.push(`${completed}/${total}`);
@@ -1456,7 +1525,7 @@ async function bootstrapSession(session) {
   }
   showView(true);
   updateRoleSections();
-  await loadCustomItems();
+  await Promise.all([loadCustomItems(), loadBaseItemSettings()]);
   await Promise.all([loadEntry(), loadWeekEntries()]);
   render();
   setSaveStatus("Tersimpan");
