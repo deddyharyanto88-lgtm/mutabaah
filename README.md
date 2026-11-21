@@ -11,6 +11,8 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 - Unduh/output ringkasan 7 hari (CSV) untuk akun sendiri
 - Mengubah nama dan menambahkan/mengubah email profil sendiri; ID login tetap
 - Admin dapat mengganti ID login dan/atau mereset kata sandi user yang dikelolanya; super admin dapat melakukannya untuk akun user/admin
+- Admin dapat menghapus user yang dikelolanya; super admin dapat menghapus akun user/admin
+- Super admin dapat memindahkan user dari satu admin ke admin lain tanpa menghapus riwayat mutabaahnya
 - Admin/super admin dapat menambahkan item tugas/isian tambahan untuk bawahan (sesuai otorisasi), mengubah nama, serta mengaktifkan/nonaktifkan/menghapusnya
 - Super admin dapat mengelola **item bawaan** global (ubah label, aktif/nonaktif, dan urutan) — tipe input khusus tetap
 - 3 tingkat akses/role dengan hierarki pengelolaan akun: **user**, **admin**, **super_admin**
@@ -22,14 +24,15 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 | Role | Hak akses |
 | --- | --- |
 | `user` | Mengisi mutabaah miliknya sendiri (item bawaan aktif + item tugas tambahan yang ditetapkan untuknya), melihat ringkasan/grafik 7 hari milik sendiri, mengunduh (output) CSV milik sendiri, dan mengganti nama profilnya. |
-| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya (email dapat ditambahkan user dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (termasuk mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
-| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** (email dapat ditambahkan pemilik akun dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** akun user/admin (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (termasuk mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
+| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya (email dapat ditambahkan user dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** dan **menghapus** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (termasuk mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
+| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** (email dapat ditambahkan pemilik akun dari profilnya) + **mengubah ID login dan/atau mereset kata sandi**, **menghapus akun user/admin**, dan **memindahkan user antar-admin** tanpa menghapus riwayat mutabaah (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (termasuk mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
 
 - **Item bawaan**: salat wajib (0–5), tilawah (halaman), dzikir, sedekah. Super admin dapat mengubah label, status aktif, dan urutan tampil; tipe input/perilaku khusus tetap (tidak dapat diubah menjadi tipe lain). Item checklist baru tetap ditambahkan lewat *Item tugas tambahan*.
 - **Item nonaktif** (bawaan maupun tugas tambahan): disembunyikan dari form pengisian dan **tidak dihitung** dalam target/progres/ringkasan/grafik/rekap & CSV. **Data historis yang tersimpan tetap ada** dan akan tampil/terhitung kembali bila item diaktifkan.
 - **Item tugas tambahan**: item yang dibuat `super_admin` berlaku untuk semua `user`; item yang dibuat `admin` berlaku untuk `user` yang dikelolanya (`created_by` = admin tersebut). Item aktif muncul sebagai checklist pada mutabaah user terkait dan ikut dihitung dalam progres, ringkasan/grafik, serta rekap. Label item dapat diubah oleh pembuatnya atau oleh super admin.
 - Akun baru selalu dikaitkan ke pembuatnya (`created_by`). `admin` hanya dapat melihat/merekap user yang ia buat (berada di bawahnya). `super_admin` dapat merekap seluruh `user` (baik yang dikelola admin maupun yang dibuat langsung oleh super admin).
-- ID login harus unik, 3–32 karakter (huruf, angka, titik, garis bawah, atau tanda hubung). Email opsional dan bisa ditambahkan pemilik akun di pengaturan profil. Login ID/email diproses lewat **Supabase Edge Function** (`login`), sedangkan pembuatan akun lewat `create-user`; keduanya menjaga service role key agar tidak terekspos di client.
+- Pemindahan user mengganti `created_by` ke admin tujuan; akun dan seluruh entri mutabaah user tetap sama. Penghapusan user menghapus akun autentikasi dan data terkait. Jika admin dihapus, user yang dikelolanya tidak ikut dihapus dan perlu dipindahkan ke admin lain oleh super admin.
+- ID login harus unik, 3–32 karakter (huruf, angka, titik, garis bawah, atau tanda hubung). Email opsional dan bisa ditambahkan pemilik akun di pengaturan profil. Login ID/email diproses lewat **Supabase Edge Function** (`login`), sedangkan pembuatan dan pengelolaan akun lewat `create-user` dan `manage-user`; service role key tidak terekspos di client.
 
 ## Kredensial Super Admin Awal (untuk Anda)
 
@@ -59,7 +62,7 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
    export const SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co";
    export const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
    ```
-5. Deploy Edge Functions login, pembuatan akun, dan reset kredensial:
+5. Deploy Edge Functions login, pembuatan akun, reset kredensial, dan pengelolaan akun:
    - Install & login [Supabase CLI](https://supabase.com/docs/guides/cli), lalu tautkan project:
      ```bash
      supabase login
@@ -67,8 +70,9 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
      supabase functions deploy create-user --no-verify-jwt
      supabase functions deploy login --no-verify-jwt
      supabase functions deploy reset-user-credentials --no-verify-jwt
+     supabase functions deploy manage-user --no-verify-jwt
      ```
-   - Function berada di [`supabase/functions/create-user/index.ts`](supabase/functions/create-user/index.ts), [`supabase/functions/login/index.ts`](supabase/functions/login/index.ts), dan [`supabase/functions/reset-user-credentials/index.ts`](supabase/functions/reset-user-credentials/index.ts). `create-user` memverifikasi role pemanggil lalu membuat akun; `login` menerjemahkan ID/email ke akun autentikasi dan memvalidasi password; `reset-user-credentials` memverifikasi role serta cakupan pengelolaan sebelum mengubah ID dan/atau kata sandi. Gunakan `--no-verify-jwt`; function memvalidasi Authorization/role sendiri dan login memang tersedia sebelum autentikasi.
+   - Function berada di [`supabase/functions/create-user/index.ts`](supabase/functions/create-user/index.ts), [`supabase/functions/login/index.ts`](supabase/functions/login/index.ts), [`supabase/functions/reset-user-credentials/index.ts`](supabase/functions/reset-user-credentials/index.ts), dan [`supabase/functions/manage-user/index.ts`](supabase/functions/manage-user/index.ts). `create-user` memverifikasi role pemanggil lalu membuat akun; `login` menerjemahkan ID/email ke akun autentikasi dan memvalidasi password; `reset-user-credentials` memverifikasi role serta cakupan pengelolaan sebelum mengubah ID dan/atau kata sandi; `manage-user` memverifikasi otorisasi sebelum menghapus akun atau memindahkan user. Gunakan `--no-verify-jwt`; function memvalidasi Authorization/role sendiri dan login memang tersedia sebelum autentikasi.
 6. Lakukan **bootstrap super admin pertama** seperti bagian di atas.
 7. (Disarankan) Matikan pendaftaran publik agar akun hanya bisa dibuat oleh admin/super admin: **Authentication → Providers → Email** → nonaktifkan "Allow new users to sign up" (sesuaikan dengan kebijakan project Anda).
 

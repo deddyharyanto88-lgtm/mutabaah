@@ -266,7 +266,7 @@ function updateRoleSections() {
     $("adminRecapTitle").textContent = "Rekap user di bawah saya (7 hari terakhir)";
     $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
-    $("credentialManagementHint").textContent = "Ubah ID login dan/atau tetapkan kata sandi baru untuk user yang Anda kelola. Kosongkan kata sandi jika hanya ingin mengganti ID.";
+    $("credentialManagementHint").textContent = "Ubah ID login/kata sandi atau hapus user yang Anda kelola. Penghapusan akun menghapus seluruh data mutabaah user tersebut.";
     $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama item yang Anda buat.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
@@ -274,7 +274,7 @@ function updateRoleSections() {
     $("adminRecapTitle").textContent = "Rekap semua user (7 hari terakhir)";
     $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
-    $("credentialManagementHint").textContent = "Ubah ID login dan/atau tetapkan kata sandi baru untuk akun user/admin. Sesama super admin tidak dapat diubah dari panel ini.";
+    $("credentialManagementHint").textContent = "Ubah ID login/kata sandi, hapus akun user/admin, atau pindahkan user ke admin lain. Penghapusan akun menghapus data mutabaah terkait; pemindahan mempertahankan seluruh riwayat mutabaah.";
     $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama semua item.";
     $("newUserRoleField").hidden = false;
   }
@@ -883,9 +883,17 @@ function renderCredentialManagement(profiles) {
 
   const table = document.createElement("table");
   table.className = "admin-table";
-  table.innerHTML = `<thead><tr><th>Pengguna</th><th>ID login baru</th><th>Kata sandi baru (opsional)</th><th>Aksi</th></tr></thead>`;
+  const headers = ["Pengguna", "ID login baru", "Kata sandi baru (opsional)"];
+  if (currentProfile.role === "super_admin") headers.push("Pindahkan user ke admin");
+  headers.push("Aksi");
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headers.forEach((text) => headerRow.append(th(text)));
+  thead.append(headerRow);
+  table.append(thead);
   const tbody = document.createElement("tbody");
 
+  const admins = profiles.filter((profile) => profile.role === "admin");
   targets.forEach((profile) => {
     const row = document.createElement("tr");
     const identity = document.createElement("td");
@@ -916,7 +924,78 @@ function renderCredentialManagement(profiles) {
     passwordInput.setAttribute("aria-label", `Kata sandi baru untuk ${profile.full_name || profile.login_id}`);
     passwordCell.append(passwordInput);
 
+    let managerCell = null;
+    if (currentProfile.role === "super_admin") {
+      managerCell = document.createElement("td");
+      if (profile.role === "user") {
+        const managerSelect = document.createElement("select");
+        managerSelect.className = "role-select";
+        managerSelect.setAttribute("aria-label", `Admin pengelola untuk ${profile.full_name || profile.login_id}`);
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = "Pilih admin";
+        managerSelect.append(placeholder);
+        admins.forEach((admin) => {
+          const option = document.createElement("option");
+          option.value = admin.id;
+          option.textContent = admin.full_name || admin.login_id;
+          option.selected = String(profile.created_by) === String(admin.id);
+          managerSelect.append(option);
+        });
+        managerCell.append(managerSelect);
+
+        const moveButton = document.createElement("button");
+        moveButton.type = "button";
+        moveButton.className = "secondary-button small";
+        moveButton.textContent = "Pindahkan";
+        moveButton.disabled = !admins.length;
+        moveButton.addEventListener("click", async () => {
+          const adminId = managerSelect.value;
+          if (!adminId) {
+            setCredentialMessage("Pilih admin tujuan terlebih dahulu.", "error");
+            return;
+          }
+          if (String(profile.created_by) === adminId) {
+            setCredentialMessage("User sudah dikelola oleh admin tersebut.", "error");
+            return;
+          }
+          const destinationAdmin = admins.find((admin) => String(admin.id) === adminId);
+          if (!confirm(`Pindahkan ${profile.full_name || profile.login_id} ke admin ${destinationAdmin?.full_name || destinationAdmin?.login_id}? Riwayat mutabaah user tetap tersimpan.`)) return;
+
+          moveButton.disabled = true;
+          setCredentialMessage("Memindahkan user...", "");
+          try {
+            const { data, error } = await supabase.functions.invoke("manage-user", {
+              body: { action: "transfer", user_id: profile.id, admin_id: adminId },
+            });
+            if (error) {
+              let message = error.message || "Gagal memindahkan user.";
+              try {
+                const body = await error.context?.json();
+                if (body?.error) message = body.error;
+              } catch {}
+              throw new Error(message);
+            }
+            if (data?.error) throw new Error(data.error);
+            profile.created_by = data.created_by;
+            setCredentialMessage(`${profile.full_name || profile.login_id} sekarang dikelola oleh ${destinationAdmin?.full_name || destinationAdmin?.login_id}.`, "success");
+            await renderAdminPanels();
+          } catch (error) {
+            setCredentialMessage(error.message || "Gagal memindahkan user.", "error");
+          } finally {
+            moveButton.disabled = false;
+          }
+        });
+        managerCell.append(moveButton);
+      } else {
+        const label = document.createElement("span");
+        label.textContent = "—";
+        managerCell.append(label);
+      }
+    }
+
     const actionCell = document.createElement("td");
+    actionCell.className = "row-actions";
     const saveButton = document.createElement("button");
     saveButton.type = "button";
     saveButton.className = "primary-button small";
@@ -957,8 +1036,46 @@ function renderCredentialManagement(profiles) {
       }
     });
 
-    actionCell.append(saveButton);
-    row.append(identity, loginCell, passwordCell, actionCell);
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "danger-button small";
+    deleteButton.textContent = "Hapus";
+    deleteButton.addEventListener("click", async () => {
+      const targetName = profile.full_name || profile.login_id;
+      const confirmation = profile.role === "admin"
+        ? `Hapus admin ${targetName}? Akun admin akan dihapus. User yang dikelolanya tidak ikut dihapus dan perlu dipindahkan oleh super admin.`
+        : `Hapus user ${targetName}? Seluruh data mutabaah user ini akan dihapus permanen.`;
+      if (!confirm(confirmation)) return;
+
+      deleteButton.disabled = true;
+      saveButton.disabled = true;
+      setCredentialMessage("Menghapus akun...", "");
+      try {
+        const { data, error } = await supabase.functions.invoke("manage-user", {
+          body: { action: "delete", user_id: profile.id },
+        });
+        if (error) {
+          let message = error.message || "Gagal menghapus akun.";
+          try {
+            const body = await error.context?.json();
+            if (body?.error) message = body.error;
+          } catch {}
+          throw new Error(message);
+        }
+        if (data?.error) throw new Error(data.error);
+        setCredentialMessage(`Akun ${targetName} berhasil dihapus.`, "success");
+        await renderAdminPanels();
+      } catch (error) {
+        setCredentialMessage(error.message || "Gagal menghapus akun.", "error");
+        deleteButton.disabled = false;
+        saveButton.disabled = false;
+      }
+    });
+
+    actionCell.append(saveButton, deleteButton);
+    row.append(identity, loginCell, passwordCell);
+    if (managerCell) row.append(managerCell);
+    row.append(actionCell);
     tbody.append(row);
   });
 
