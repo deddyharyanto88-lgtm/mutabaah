@@ -110,6 +110,7 @@ function normalizeEntry(data) {
 function normalizeEntryWithDate(data) {
   const e = normalizeEntry(data);
   e.entry_date = data.entry_date;
+  if (data.user_id) e.user_id = data.user_id;
   return e;
 }
 
@@ -793,8 +794,9 @@ function createStatusChart({ title, subtitle, rows }) {
 function groupEntriesByUser(entries) {
   const byUser = new Map();
   entries.forEach((e) => {
-    if (!byUser.has(e.user_id)) byUser.set(e.user_id, []);
-    byUser.get(e.user_id).push(e);
+    const key = String(e.user_id);
+    if (!byUser.has(key)) byUser.set(key, []);
+    byUser.get(key).push(e);
   });
   return byUser;
 }
@@ -804,27 +806,45 @@ async function renderAdminPanels() {
   const from = sevenDaysAgoKey();
   const to = dateKey(new Date());
 
-  const [profilesRes, entriesRes] = await Promise.all([
-    supabase.from("profiles").select("id, login_id, email, full_name, role, created_by, created_at").order("created_at", { ascending: true }),
-    supabase.from("mutabaah_entries").select("user_id, entry_date, prayer_count, quran_pages, dzikir, sedekah, custom_checks").gte("entry_date", from).lte("entry_date", to),
-  ]);
+  const profilesRes = await supabase
+    .from("profiles")
+    .select("id, login_id, email, full_name, role, created_by, created_at")
+    .order("created_at", { ascending: true });
 
-  if (profilesRes.error || entriesRes.error) {
+  if (profilesRes.error) {
     $("adminUsersSummary").textContent = "Gagal memuat data.";
-    console.error(profilesRes.error || entriesRes.error);
+    console.error(profilesRes.error);
     return;
   }
 
   allVisibleProfiles = profilesRes.data || [];
-  const entries = (entriesRes.data || []).map(normalizeEntryWithDate);
-  const byUser = groupEntriesByUser(entries);
-
   let scopedUsers;
   if (currentProfile.role === "admin") {
     scopedUsers = allVisibleProfiles.filter((p) => String(p.created_by) === String(currentUser.id) && p.role === "user");
   } else {
     scopedUsers = allVisibleProfiles.filter((p) => p.role === "user");
   }
+
+  let entries = [];
+  if (scopedUsers.length) {
+    const entriesRes = await supabase
+      .from("mutabaah_entries")
+      .select("user_id, entry_date, prayer_count, quran_pages, dzikir, sedekah, custom_checks")
+      .in("user_id", scopedUsers.map((p) => p.id))
+      .gte("entry_date", from)
+      .lte("entry_date", to)
+      .order("entry_date", { ascending: false });
+
+    if (entriesRes.error) {
+      $("adminUsersSummary").textContent = "Gagal memuat data rekap mutabaah.";
+      console.error(entriesRes.error);
+      return;
+    }
+    entries = entriesRes.data || [];
+  }
+
+  const normalizedEntries = entries.map(normalizeEntryWithDate);
+  const byUser = groupEntriesByUser(normalizedEntries);
 
   renderAdminSummary(scopedUsers, byUser);
   renderCustomItemsManager();
@@ -875,7 +895,7 @@ function renderAdminSummary(users, byUser) {
   const tbody = document.createElement("tbody");
 
   users.forEach((p) => {
-    const list = byUser.get(p.id) || [];
+    const list = byUser.get(String(p.id)) || [];
     const perDay = totalTargetsForProfile(p);
     const done = list.reduce((s, e) => s + completedCountForProfile(e, p), 0);
     const denom = 7 * perDay;
