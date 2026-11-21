@@ -35,6 +35,7 @@ let weekEntries = [];
 let adminRecapRows = [];
 let adminRecapRange = null;
 let saveTimer = null;
+let recapChannel = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -381,6 +382,7 @@ async function saveEntry() {
   await loadWeekEntries();
   renderSummary();
   if (currentProfile?.role !== "user") renderAdminPanels();
+  recapChannel?.postMessage({ type: "entry-updated", userId: currentUser.id });
 }
 
 function scheduleSave(immediate = false) {
@@ -1899,6 +1901,30 @@ async function bootstrapSession(session) {
 function bindEvents() {
   $("authForm").addEventListener("submit", handleAuthSubmit);
   $("logoutButton").addEventListener("click", async () => { await supabase.auth.signOut(); });
+
+  if (typeof window !== "undefined") {
+    if ("BroadcastChannel" in window) {
+      recapChannel = new BroadcastChannel("mutabaah-recap");
+      recapChannel.addEventListener("message", async (event) => {
+        if (event.data?.type === "entry-updated" && currentProfile?.role !== "user") {
+          await renderAdminPanels();
+        }
+      });
+    }
+    window.addEventListener("focus", async () => {
+      if (currentProfile?.role !== "user") await renderAdminPanels();
+    });
+    document.addEventListener("visibilitychange", async () => {
+      if (!document.hidden && currentProfile?.role !== "user") {
+        await renderAdminPanels();
+      }
+    });
+    window.setInterval(async () => {
+      if (document.hidden || currentProfile?.role === "user") return;
+      await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+      await renderAdminPanels();
+    }, 30000);
+  }
 
   const recapPeriod = $("recapPeriod");
   const recapFrom = $("recapFrom");
