@@ -51,11 +51,32 @@ create index if not exists profiles_created_by_idx on public.profiles (created_b
 create table if not exists public.custom_items (
   id bigint generated always as identity primary key,
   label text not null check (char_length(trim(label)) > 0),
+  input_type text not null default 'check'
+    constraint custom_items_input_type_allowed check (input_type in ('check', 'number', 'text')),
   created_by uuid not null references public.profiles(id) on delete cascade,
   creator_role text not null check (creator_role in ('admin', 'super_admin')),
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+-- Upgrade aman: item lama tetap menggunakan checklist.
+alter table public.custom_items
+  add column if not exists input_type text not null default 'check';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'custom_items_input_type_allowed'
+      and conrelid = 'public.custom_items'::regclass
+  ) then
+    alter table public.custom_items
+      add constraint custom_items_input_type_allowed
+      check (input_type in ('check', 'number', 'text'));
+  end if;
+end;
+$$;
 
 create index if not exists custom_items_created_by_idx on public.custom_items (created_by);
 create index if not exists custom_items_active_idx on public.custom_items (is_active);

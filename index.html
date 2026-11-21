@@ -171,8 +171,15 @@
             </div>
           </div>
           <p class="admin-hint" id="customItemsHint"></p>
-          <form id="customItemForm" class="create-form single">
+          <form id="customItemForm" class="create-form custom-item-form">
             <label class="grow"><span>Nama item tugas</span><input id="customItemLabel" type="text" autocomplete="off" placeholder="Contoh: Shalat Dhuha, Puasa Senin-Kamis" required /></label>
+            <label><span>Jenis input</span>
+              <select id="customItemType">
+                <option value="check">Checklist</option>
+                <option value="number">Angka (jumlah)</option>
+                <option value="text">Isi manual (teks)</option>
+              </select>
+            </label>
             <button type="submit" class="primary-button" id="customItemSubmit">Tambah item</button>
           </form>
           <p class="auth-message" id="customItemMessage" aria-live="polite"></p>

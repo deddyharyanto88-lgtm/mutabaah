@@ -113,14 +113,20 @@ function normalizeEntryWithDate(data) {
   return e;
 }
 
-function isCustomChecked(entry, itemId) {
-  const checks = entry?.custom_checks || {};
-  return Boolean(checks[String(itemId)]);
+function customItemValue(entry, itemId) {
+  return entry?.custom_checks?.[String(itemId)] ?? "";
 }
 
-function setCustomChecked(entry, itemId, value) {
+function isCustomItemDone(entry, item) {
+  const value = customItemValue(entry, item.id);
+  if (item.input_type === "check") return value === true;
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function setCustomItemValue(entry, itemId, value) {
   if (!entry.custom_checks || typeof entry.custom_checks !== "object") entry.custom_checks = {};
-  entry.custom_checks[String(itemId)] = Boolean(value);
+  entry.custom_checks[String(itemId)] = value;
 }
 
 function normalizeBaseItemSettings(rows) {
@@ -217,7 +223,7 @@ function baseCompletedCount(entry) {
 
 function completedCountForProfile(entry, profile) {
   const items = applicableItemsForProfile(profile);
-  const customDone = items.filter((i) => isCustomChecked(entry, i.id)).length;
+  const customDone = items.filter((i) => isCustomItemDone(entry, i)).length;
   return baseCompletedCount(entry) + customDone;
 }
 
@@ -227,7 +233,7 @@ function totalTargetsForProfile(profile) {
 
 function completedCountForSelf(entry) {
   const items = applicableItemsForSelf();
-  const customDone = items.filter((i) => isCustomChecked(entry, i.id)).length;
+  const customDone = items.filter((i) => isCustomItemDone(entry, i)).length;
   return baseCompletedCount(entry) + customDone;
 }
 
@@ -267,7 +273,7 @@ function updateRoleSections() {
     $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi atau hapus user yang Anda kelola. Penghapusan akun menghapus seluruh data mutabaah user tersebut.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama item yang Anda buat.";
+    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Pilih jenis input saat membuat item; item aktif akan muncul di mutabaah mereka.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
   } else if (isSuper) {
@@ -275,7 +281,7 @@ function updateRoleSections() {
     $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi, hapus akun user/admin, atau pindahkan user ke admin lain. Penghapusan akun menghapus data mutabaah terkait; pemindahan mempertahankan seluruh riwayat mutabaah.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Item aktif akan muncul di mutabaah mereka. Anda dapat mengubah nama semua item.";
+    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Pilih jenis input saat membuat item; item aktif akan muncul di mutabaah mereka.";
     $("newUserRoleField").hidden = false;
   }
 }
@@ -293,7 +299,7 @@ async function loadProfile() {
 async function loadCustomItems() {
   const { data, error } = await supabase
     .from("custom_items")
-    .select("id, label, created_by, creator_role, is_active, created_at")
+    .select("id, label, input_type, created_by, creator_role, is_active, created_at")
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) {
@@ -428,16 +434,28 @@ function render() {
   });
 
   applicable.forEach((item) => {
-    nodes.push(createCheckItem({
-      label: item.label,
-      category: "Tugas tambahan",
-      checked: isCustomChecked(currentEntry, item.id),
-      onChange: (checked) => {
-        setCustomChecked(currentEntry, item.id, checked);
-        render();
-        scheduleSave(true);
-      },
-    }));
+    if (item.input_type === "check") {
+      nodes.push(createCheckItem({
+        label: item.label,
+        category: "Tugas tambahan",
+        checked: isCustomItemDone(currentEntry, item),
+        onChange: (checked) => {
+          setCustomItemValue(currentEntry, item.id, checked);
+          render();
+          scheduleSave(true);
+        },
+      }));
+    } else {
+      nodes.push(createCustomValueItem({
+        item,
+        value: customItemValue(currentEntry, item.id),
+        onChange: (value) => {
+          setCustomItemValue(currentEntry, item.id, value);
+          updateProgressDisplay();
+          scheduleSave(false);
+        },
+      }));
+    }
   });
 
   if (nodes.length === 0) {
@@ -468,6 +486,39 @@ function createCheckItem({ label, category, checked, onChange }) {
   cat.textContent = category;
   el.append(input, checkmark, text, cat);
   return el;
+}
+
+function createCustomValueItem({ item, value, onChange }) {
+  const label = document.createElement("label");
+  label.className = "input-card custom-value-card";
+  const icon = document.createElement("span");
+  icon.className = "input-icon";
+  icon.textContent = item.input_type === "number" ? "#" : "✎";
+  const content = document.createElement("span");
+  content.className = "input-content";
+  const strong = document.createElement("strong");
+  strong.textContent = item.label;
+  const small = document.createElement("small");
+  small.textContent = item.input_type === "number" ? "Isi angka" : "Isi manual";
+  content.append(strong, small);
+  const input = document.createElement("input");
+  input.className = "custom-value-input";
+  input.type = item.input_type === "number" ? "number" : "text";
+  if (item.input_type === "number") {
+    input.min = "0";
+    input.step = "1";
+  }
+  input.value = value === "" || value == null ? "" : String(value);
+  input.setAttribute("aria-label", item.label);
+  input.addEventListener("input", () => {
+    if (item.input_type === "number") {
+      onChange(input.value === "" ? "" : Number(input.value));
+    } else {
+      onChange(input.value);
+    }
+  });
+  label.append(icon, content, input);
+  return label;
 }
 
 function createPrayerCard(item, value, onChange) {
@@ -594,13 +645,13 @@ function renderSummary() {
   applicable.forEach((item) => {
     statusRows.push({
       label: item.label,
-      days: days.map((day) => ({ label: dayLabel(day.date), done: isCustomChecked(day.data, item.id) })),
+      days: days.map((day) => ({ label: dayLabel(day.date), done: isCustomItemDone(day.data, item) })),
     });
   });
 
   if (statusRows.length) {
     chartNodes.push(createStatusChart({
-      title: "Checklist harian",
+      title: "Status harian",
       subtitle: "status per hari",
       rows: statusRows,
     }));
@@ -1104,7 +1155,7 @@ function renderCustomItemsManager() {
   table.className = "admin-table";
   const showOwner = currentProfile.role === "super_admin";
   table.innerHTML = `<thead><tr>
-    <th>Item</th>${showOwner ? "<th>Pembuat</th>" : ""}<th>Cakupan</th><th>Status</th><th>Aksi</th>
+    <th>Item</th><th>Jenis input</th>${showOwner ? "<th>Pembuat</th>" : ""}<th>Cakupan</th><th>Status</th><th>Aksi</th>
   </tr></thead>`;
   const tbody = document.createElement("tbody");
 
@@ -1114,6 +1165,7 @@ function renderCustomItemsManager() {
     labelTd.textContent = item.label;
     labelTd.className = "item-label-cell";
     tr.append(labelTd);
+    tr.append(cell(customItemTypeLabel(item.input_type)));
 
     if (showOwner) {
       const owner = profileMap.get(String(item.created_by));
@@ -1247,6 +1299,12 @@ function beginEditCustomItemLabel(row, labelTd, item) {
   });
 
   actionTd.append(saveBtn, cancelBtn);
+}
+
+function customItemTypeLabel(type) {
+  if (type === "number") return "Angka (jumlah)";
+  if (type === "text") return "Isi manual";
+  return "Checklist";
 }
 
 function renderBaseItemsManager() {
@@ -1551,7 +1609,10 @@ function downloadSummary() {
       else if (item.key === "quran_pages") row.push(Number(data.quran_pages) || 0);
       else row.push(data[item.key] ? "Ya" : "Tidak");
     });
-    applicable.forEach((i) => row.push(isCustomChecked(data, i.id) ? "Ya" : "Tidak"));
+    applicable.forEach((i) => {
+      const value = customItemValue(data, i.id);
+      row.push(i.input_type === "check" ? (isCustomItemDone(data, i) ? "Ya" : "Tidak") : value);
+    });
     row.push(`${completed}/${total}`);
     row.push(`${total ? Math.round((completed / total) * 100) : 0}%`);
     row.push(data.notes || "");
@@ -1709,6 +1770,7 @@ async function handleCreateCustomItem(event) {
   try {
     const { error } = await supabase.from("custom_items").insert({
       label,
+      input_type: $("customItemType").value,
       created_by: currentUser.id,
       creator_role: currentProfile.role,
       is_active: true,

@@ -78,6 +78,7 @@ h1 em { color: var(--teal); font-style: normal; }
 .auth-form, .create-form { display: grid; gap: 12px; margin-top: 18px; }
 .create-form { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; margin-top: 8px; }
 .create-form.single { grid-template-columns: 1fr auto; }
+.create-form.custom-item-form { grid-template-columns: minmax(180px, 1fr) minmax(150px, .4fr) auto; }
 .create-form .grow { min-width: 0; }
 .auth-form label, .create-form label { display: grid; gap: 6px; color: var(--ink); font-size: 13px; font-weight: 600; }
 .auth-form input, .create-form input, .create-form select, .role-select { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; outline: none; color: var(--ink); background: #fbfcfa; font: inherit; font-size: 14px; }
@@ -161,6 +162,8 @@ h2 { margin: 0; font-size: 21px; letter-spacing: -.5px; }
 .input-content strong { font-size: 14px; }
 .input-content small { color: var(--muted); font-size: 11px; }
 .input-card select, .number-input { margin-left: auto; }
+.custom-value-card input { width: min(220px, 42%); margin-left: auto; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--teal-dark); background: #fbfcfa; font: inherit; font-size: 13px; }
+.custom-value-card input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .input-card select, .number-input input { padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--teal-dark); background: #fbfcfa; font-size: 12px; font-weight: 600; }
 .input-card select:focus, .number-input input:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .number-input { display: flex; align-items: center; gap: 5px; }
@@ -206,5 +209,6 @@ footer { display: flex; justify-content: center; gap: 10px; margin-top: 54px; co
   .status-row { grid-template-columns: 64px repeat(7, 1fr); gap: 4px; }
   .status-name { font-size: 10px; }
   .create-form.single { grid-template-columns: 1fr; }
+  .create-form.custom-item-form { grid-template-columns: 1fr; }
   .status-dot { height: 26px; border-radius: 7px; font-size: 12px; }
 }

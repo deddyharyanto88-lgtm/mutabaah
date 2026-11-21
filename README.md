@@ -13,7 +13,7 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 - Admin dapat mengganti ID login dan/atau mereset kata sandi user yang dikelolanya; super admin dapat melakukannya untuk akun user/admin
 - Admin dapat menghapus user yang dikelolanya; super admin dapat menghapus akun user/admin
 - Super admin dapat memindahkan user dari satu admin ke admin lain tanpa menghapus riwayat mutabaahnya
-- Admin/super admin dapat menambahkan item tugas/isian tambahan untuk bawahan (sesuai otorisasi), mengubah nama, serta mengaktifkan/nonaktifkan/menghapusnya
+- Admin/super admin dapat menambahkan item tugas/isian tambahan untuk bawahan (sesuai otorisasi), memilih jenis input (checklist, angka, atau isi manual), mengubah nama, serta mengaktifkan/nonaktifkan/menghapusnya
 - Super admin dapat mengelola **item bawaan** global (ubah label, aktif/nonaktif, dan urutan) — tipe input khusus tetap
 - 3 tingkat akses/role dengan hierarki pengelolaan akun: **user**, **admin**, **super_admin**
 - Data tersimpan di Supabase (Postgres) dengan Row Level Security (RLS)
@@ -23,13 +23,13 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 
 | Role | Hak akses |
 | --- | --- |
-| `user` | Mengisi mutabaah miliknya sendiri (item bawaan aktif + item tugas tambahan yang ditetapkan untuknya), melihat ringkasan/grafik 7 hari milik sendiri, mengunduh (output) CSV milik sendiri, dan mengganti nama profilnya. |
-| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya (email dapat ditambahkan user dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** dan **menghapus** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (termasuk mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
-| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** (email dapat ditambahkan pemilik akun dari profilnya) + **mengubah ID login dan/atau mereset kata sandi**, **menghapus akun user/admin**, dan **memindahkan user antar-admin** tanpa menghapus riwayat mutabaah (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (termasuk mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
+| `user` | Mengisi mutabaah miliknya sendiri (item bawaan aktif + item tugas tambahan yang ditetapkan untuknya), melihat ringkasan/grafik 7 hari milik sendiri, mengunduh (output) CSV milik sendiri, dan mengganti nama profilnya. User hanya mengisi item sesuai jenis input yang telah ditetapkan admin. |
+| `admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **user** di bawahnya (email dapat ditambahkan user dari profilnya) + **mengubah ID login dan/atau mereset kata sandi** dan **menghapus** user yang dikelolanya + **menambah/mengelola item tugas tambahan** untuk user di bawah otorisasinya (memilih jenis input checklist/angka/isi manual dan mengubah nama item yang dibuatnya) + melihat rekap mutabaah **hanya user yang dikelolanya** (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya. |
+| `super_admin` | Semua hak `user` + membuat akun dengan **ID login dan password** untuk **admin** dan **user** (email dapat ditambahkan pemilik akun dari profilnya) + **mengubah ID login dan/atau mereset kata sandi**, **menghapus akun user/admin**, dan **memindahkan user antar-admin** tanpa menghapus riwayat mutabaah (tidak termasuk sesama super admin) + **mengelola item bawaan** global (label/aktif/nonaktif/urutan, tipe khusus tetap) + **menambah/mengelola semua item tugas tambahan** (memilih jenis input checklist/angka/isi manual dan mengubah nama) yang berlaku sesuai cakupan pembuat + melihat rekap **semua user** di bawah admin dan super admin (7 hari terakhir, mengikuti item aktif) dan mengunduh rekapnya + mengelola/mengubah role pengguna. |
 
 - **Item bawaan**: salat wajib (0–5), tilawah (halaman), dzikir, sedekah. Super admin dapat mengubah label, status aktif, dan urutan tampil; tipe input/perilaku khusus tetap (tidak dapat diubah menjadi tipe lain). Item checklist baru tetap ditambahkan lewat *Item tugas tambahan*.
 - **Item nonaktif** (bawaan maupun tugas tambahan): disembunyikan dari form pengisian dan **tidak dihitung** dalam target/progres/ringkasan/grafik/rekap & CSV. **Data historis yang tersimpan tetap ada** dan akan tampil/terhitung kembali bila item diaktifkan.
-- **Item tugas tambahan**: item yang dibuat `super_admin` berlaku untuk semua `user`; item yang dibuat `admin` berlaku untuk `user` yang dikelolanya (`created_by` = admin tersebut). Item aktif muncul sebagai checklist pada mutabaah user terkait dan ikut dihitung dalam progres, ringkasan/grafik, serta rekap. Label item dapat diubah oleh pembuatnya atau oleh super admin.
+- **Item tugas tambahan**: item yang dibuat `super_admin` berlaku untuk semua `user`; item yang dibuat `admin` berlaku untuk `user` yang dikelolanya (`created_by` = admin tersebut). Admin/super admin memilih jenis input saat membuat item: checklist, angka (input jumlah), atau isi manual (teks). Nilai yang diisi user ikut dihitung dalam progres/rekap, disimpan pada `custom_checks`, dan ditampilkan dalam CSV ringkasan. Label item dapat diubah oleh pembuatnya atau oleh super admin.
 - Akun baru selalu dikaitkan ke pembuatnya (`created_by`). `admin` hanya dapat melihat/merekap user yang ia buat (berada di bawahnya). `super_admin` dapat merekap seluruh `user` (baik yang dikelola admin maupun yang dibuat langsung oleh super admin).
 - Pemindahan user mengganti `created_by` ke admin tujuan; akun dan seluruh entri mutabaah user tetap sama. Penghapusan user menghapus akun autentikasi dan data terkait. Jika admin dihapus, user yang dikelolanya tidak ikut dihapus dan perlu dipindahkan ke admin lain oleh super admin.
 - ID login harus unik, 3–32 karakter (huruf, angka, titik, garis bawah, atau tanda hubung). Email opsional dan bisa ditambahkan pemilik akun di pengaturan profil. Login ID/email diproses lewat **Supabase Edge Function** (`login`), sedangkan pembuatan dan pengelolaan akun lewat `create-user` dan `manage-user`; service role key tidak terekspos di client.
@@ -55,7 +55,7 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
 ## Setup Supabase
 
 1. Buat project di [Supabase](https://supabase.com).
-2. Buka **SQL Editor** dan jalankan isi file [`supabase/schema.sql`](supabase/schema.sql) untuk membuat tabel (termasuk `base_item_settings` untuk konfigurasi item bawaan), trigger, fungsi/hierarki role, dan kebijakan RLS. Jika Anda memperbarui deployment yang sudah ada, jalankan kembali schema ini agar tabel `base_item_settings` dan policy terkait tersedia (aman/idempoten).
+2. Buka **SQL Editor** dan jalankan isi file [`supabase/schema.sql`](supabase/schema.sql) untuk membuat tabel, trigger, fungsi/hierarki role, dan kebijakan RLS. Jika Anda memperbarui deployment yang sudah ada, jalankan kembali schema ini agar kolom `custom_items.input_type`, tabel `base_item_settings`, dan policy terkait tersedia (aman/idempoten).
 3. Buka **Project Settings → API** dan salin **Project URL** serta **anon/public key**.
 4. Isi konfigurasi di [`supabase-config.js`](supabase-config.js):
    ```js
@@ -100,8 +100,8 @@ Lalu buka <http://localhost:8000>.
 ## Struktur Data
 
 - `profiles`: profil pengguna (`id`, `login_id`, `email` opsional, `full_name`, `role` = `user`/`admin`/`super_admin`, `created_by`, `created_at`). `created_by` menyimpan siapa yang membuat/mengelola akun (hierarki). Upgrade schema mengisi ID login akun lama dengan UUID profilnya.
-- `mutabaah_entries`: entri harian per pengguna (`entry_date`, `prayer_count`, `quran_pages`, `dzikir`, `sedekah`, `notes`, `custom_checks`), unik per `(user_id, entry_date)`. Kolom bawaan menyimpan nilai historis; `custom_checks` menyimpan status checklist item tugas tambahan per item.
-- `custom_items`: item tugas tambahan (`label`, `created_by`, `creator_role`, `is_active`) yang dibuat admin/super admin untuk bawahan sesuai otorisasi.
+- `mutabaah_entries`: entri harian per pengguna (`entry_date`, `prayer_count`, `quran_pages`, `dzikir`, `sedekah`, `notes`, `custom_checks`), unik per `(user_id, entry_date)`. Kolom bawaan menyimpan nilai historis; `custom_checks` menyimpan status atau nilai item tugas tambahan per item.
+- `custom_items`: item tugas tambahan (`label`, `input_type`, `created_by`, `creator_role`, `is_active`) yang dibuat admin/super admin untuk bawahan sesuai otorisasi. `input_type` bernilai `check`, `number`, atau `text`; default `check` mempertahankan item lama sebagai checklist.
 - `base_item_settings`: konfigurasi global 4 item bawaan (`key` = `prayer_count`/`quran_pages`/`dzikir`/`sedekah`, `label`, `is_active`, `sort_order`), dikelola oleh super admin. Tipe/perilaku khusus tiap key tetap.
 
 Lihat definisi lengkap, helper hierarki, dan kebijakan RLS di [`supabase/schema.sql`](supabase/schema.sql).
