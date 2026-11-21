@@ -271,25 +271,31 @@ async function loadCustomItems() {
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) {
-    console.error(error);
     const legacyResult = await supabase
       .from("custom_items")
       .select("id, label, input_type, created_by, creator_role, is_active, created_at")
       .order("created_at", { ascending: true })
       .order("id", { ascending: true });
     if (legacyResult.error) {
-      console.error(legacyResult.error);
-      allVisibleCustomItems = [];
-      return;
+      console.error("Gagal memuat item isian dengan skema terbaru maupun kompatibilitas:", {
+        currentSchemaError: error,
+        compatibilityError: legacyResult.error,
+      });
+      setCustomItemMessage(
+        "Item isian gagal dimuat. Jalankan ulang supabase/schema.sql di Supabase, lalu muat ulang aplikasi.",
+        "error",
+      );
+      return false;
     }
     allVisibleCustomItems = (legacyResult.data || []).map((item) => ({
       ...item,
       is_deleted: false,
       legacy_key: null,
     }));
-    return;
+    return true;
   }
   allVisibleCustomItems = data || [];
+  return true;
 }
 
 async function loadBaseItemSettings() {
@@ -1480,6 +1486,7 @@ async function handleCreateCustomItem(event) {
   const btn = $("customItemSubmit");
   btn.disabled = true;
   setCustomItemMessage("Menyimpan item...", "");
+  let itemSaved = false;
   try {
     const { error } = await supabase.from("custom_items").insert({
       label,
@@ -1489,13 +1496,25 @@ async function handleCreateCustomItem(event) {
       is_active: true,
     });
     if (error) throw error;
+    itemSaved = true;
     $("customItemForm").reset();
-    setCustomItemMessage("Item isian berhasil ditambahkan.", "success");
-    await loadCustomItems();
+    const itemsLoaded = await loadCustomItems();
+    if (!itemsLoaded) return;
     render();
     await renderAdminPanels();
+    setCustomItemMessage(
+      currentProfile.role === "admin"
+        ? "Item berhasil ditambahkan untuk user di bawah Anda. Untuk mengisinya, buka akun user terkait."
+        : "Item isian berhasil ditambahkan untuk semua user.",
+      "success",
+    );
   } catch (err) {
-    setCustomItemMessage(err.message || "Gagal menambahkan item.", "error");
+    setCustomItemMessage(
+      itemSaved
+        ? `Item sudah tersimpan, tetapi tampilan gagal diperbarui: ${err.message || "coba muat ulang aplikasi."}`
+        : err.message || "Gagal menambahkan item.",
+      "error",
+    );
   } finally {
     btn.disabled = false;
   }
