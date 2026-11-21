@@ -25,15 +25,9 @@ button { cursor: pointer; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .topbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .topbar-actions { display: flex; align-items: center; gap: 9px; }
-.user-area { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.75); }
-.user-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 12px; font-weight: 600; }
 .logout-button { border: 0; border-radius: 7px; color: #8b5a4a; background: #f8ece8; padding: 6px 10px; font-size: 11px; font-weight: 700; }
 .logout-button:hover { background: #f1ddd7; }
 .link-button.small { margin-top: 0; padding: 4px 6px; font-size: 12px; }
-.role-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
-.role-user { color: #4f6b63; background: #e9f1ee; }
-.role-admin { color: #7a5a16; background: #f6e8c7; }
-.role-super_admin { color: #6a3d86; background: #efe4f7; }
 .brand { display: inline-flex; gap: 11px; align-items: center; color: var(--ink); text-decoration: none; }
 .brand-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 12px 12px 12px 3px; color: white; background: var(--teal); font-size: 21px; font-family: serif; }
 .brand strong, .brand small { display: block; line-height: 1.1; }
@@ -180,7 +174,6 @@ footer { display: flex; justify-content: center; gap: 10px; margin-top: 54px; co
   .app-shell { padding: 20px 17px 25px; }
   .topbar { align-items: flex-start; }
   .topbar-right { width: 100%; justify-content: space-between; }
-  .user-name { max-width: 110px; }
   .auth-card { margin-top: 24px; padding: 22px 18px; }
   .admin-card { padding: 20px 16px; }
   .hero { min-height: 190px; padding: 60px 4px 28px; }

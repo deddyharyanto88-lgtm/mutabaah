@@ -248,15 +248,6 @@ function showView(loggedIn) {
   $("userArea").hidden = !loggedIn;
 }
 
-function updateUserArea() {
-  if (!currentUser || !currentProfile) return;
-  $("userName").textContent = currentProfile.full_name || currentProfile.login_id || "Pengguna";
-  $("userName").title = `ID: ${currentProfile.login_id}${currentProfile.email ? ` · ${currentProfile.email}` : ""}`;
-  const badge = $("userRoleBadge");
-  badge.textContent = roleLabel(currentProfile.role);
-  badge.className = `role-badge role-${currentProfile.role}`;
-}
-
 function updateRoleSections() {
   const role = currentProfile?.role || "user";
   const isAdmin = role === "admin";
@@ -1534,7 +1525,6 @@ function renderRoleManagement(profiles) {
       p.role = select.value;
       if (p.id === currentUser.id) {
         currentProfile.role = select.value;
-        updateUserArea();
         updateRoleSections();
       }
       await loadCustomItems();
@@ -1776,7 +1766,6 @@ async function bootstrapSession(session) {
     return;
   }
   showView(true);
-  updateUserArea();
   updateRoleSections();
   await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
   await Promise.all([loadEntry(), loadWeekEntries()]);
