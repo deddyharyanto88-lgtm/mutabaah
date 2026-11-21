@@ -115,7 +115,7 @@ insert into public.base_item_settings (key, label, is_active, sort_order) values
 on conflict (key) do nothing;
 
 -- Convert the former built-in items to ordinary editable input items.
-insert into public.custom_items (label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key)
+insert into public.custom_items (label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key, sort_order)
 select
   settings.label,
   case settings.key
@@ -127,7 +127,8 @@ select
   'super_admin',
   settings.is_active,
   settings.is_deleted,
-  settings.key
+  settings.key,
+  settings.sort_order * 1000
 from public.base_item_settings settings
 cross join lateral (
   select id
