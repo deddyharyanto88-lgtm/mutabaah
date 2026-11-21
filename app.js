@@ -838,6 +838,17 @@ function renderAdminSummary(users, byUser) {
   adminRecapRows = [];
   const activeBase = activeBaseItems();
   const showManager = currentProfile.role === "super_admin";
+  const customItems = [];
+  const customItemMap = new Map();
+  users.forEach((profile) => {
+    applicableItemsForProfile(profile).forEach((item) => {
+      const key = String(item.id);
+      if (!customItemMap.has(key)) {
+        customItemMap.set(key, item);
+        customItems.push(item);
+      }
+    });
+  });
 
   if (!users.length) {
     wrap.textContent = "Belum ada user pada cakupan ini.";
@@ -854,7 +865,9 @@ function renderAdminSummary(users, byUser) {
   activeBase.forEach((item) => {
     if (item.key === "prayer_count") headRow.append(th(`${item.label} (7h)`));
     else if (item.key === "quran_pages") headRow.append(th(`${item.label} (7h)`));
+    else headRow.append(th(`${item.label} (7h)`));
   });
+  customItems.forEach((item) => headRow.append(th(`${item.label} (7h)`)));
   headRow.append(th("Target (7h)"));
   thead.append(headRow);
   table.append(thead);
@@ -877,6 +890,7 @@ function renderAdminSummary(users, byUser) {
       email: p.email || "",
       manager: managerLabel,
       base: {},
+      custom: {},
       done,
       denom,
       pct,
@@ -897,7 +911,41 @@ function renderAdminSummary(users, byUser) {
         const pages = list.reduce((s, e) => s + Number(e.quran_pages || 0), 0);
         recap.base[item.key] = pages;
         tr.append(cell(String(pages)));
+      } else {
+        const doneCount = list.filter((e) => Boolean(e[item.key])).length;
+        recap.base[item.key] = doneCount;
+        tr.append(cell(`${doneCount} / 7`));
       }
+    });
+
+    const applicable = applicableItemsForProfile(p);
+    const applicableIds = new Set(applicable.map((item) => String(item.id)));
+    customItems.forEach((item) => {
+      const key = String(item.id);
+      if (!applicableIds.has(key)) {
+        recap.custom[key] = "-";
+        tr.append(cell("-"));
+        return;
+      }
+      let display;
+      if (item.input_type === "number") {
+        const total = list.reduce((sum, entry) => {
+          const value = customItemValue(entry, item.id);
+          return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+        }, 0);
+        display = String(total);
+      } else if (item.input_type === "text") {
+        const filled = list.filter((entry) => {
+          const value = customItemValue(entry, item.id);
+          return typeof value === "string" && value.trim() !== "";
+        }).length;
+        display = `${filled} / 7`;
+      } else {
+        const checked = list.filter((entry) => isCustomItemDone(entry, item)).length;
+        display = `${checked} / 7`;
+      }
+      recap.custom[key] = display;
+      tr.append(cell(display));
     });
 
     tr.append(cell(`${pct}% (${done}/${denom})`));
@@ -1615,12 +1663,21 @@ function downloadRecap() {
   if (!adminRecapRows.length) return;
   const showManager = currentProfile?.role === "super_admin";
   const activeBase = activeBaseItems();
+  const customLabels = new Map();
+  adminRecapRows.forEach((recap) => {
+    Object.keys(recap.custom || {}).forEach((id) => {
+      const item = allVisibleCustomItems.find((candidate) => String(candidate.id) === id);
+      if (item) customLabels.set(id, item.label);
+    });
+  });
   const header = ["Nama", "Email"];
   if (showManager) header.push("Dikelola oleh");
   activeBase.forEach((item) => {
     if (item.key === "prayer_count") header.push(`${item.label} (7 hari)`);
     else if (item.key === "quran_pages") header.push(`${item.label} (7 hari)`);
+    else header.push(`${item.label} (7 hari)`);
   });
+  customLabels.forEach((label) => header.push(`${label} (7 hari)`));
   header.push("Target selesai (7 hari)", "Target maksimum (7 hari)", "Progres (7 hari)");
 
   const rows = [header, ...adminRecapRows.map((r) => {
@@ -1629,7 +1686,9 @@ function downloadRecap() {
     activeBase.forEach((item) => {
       if (item.key === "prayer_count") row.push(`${r.base[item.key] || 0}/35`);
       else if (item.key === "quran_pages") row.push(String(r.base[item.key] || 0));
+      else row.push(`${r.base[item.key] || 0}/7`);
     });
+    customLabels.forEach((label, id) => row.push(String(r.custom?.[id] ?? "-")));
     row.push(String(r.done), String(r.denom), `${r.pct}%`);
     return row;
   })];
