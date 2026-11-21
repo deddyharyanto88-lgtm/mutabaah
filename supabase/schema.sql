@@ -328,7 +328,7 @@ create policy "base_item_settings_update"
 -- 6) BOOTSTRAP SUPER ADMIN PERTAMA
 -- 1. Buat user di Supabase Dashboard > Authentication > Users > "Add user" > "Create new user"
 --    Email    : superadmin@mutabaah.id
---    Password : MutabaahSuper#2026
+--    Password : gunakan kata sandi acak dan unik, simpan di pengelola kata sandi
 --    Centang "Auto Confirm User" jika tersedia.
 -- 2. Jalankan perintah berikut untuk menjadikan akun tersebut super admin (gunakan insert..on conflict
 --    jika profil belum otomatis terbentuk):

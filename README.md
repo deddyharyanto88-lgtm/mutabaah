@@ -39,7 +39,7 @@ Buat **1 akun super admin** pertama di Supabase, lalu promosikan menjadi `super_
 
 1. Buka **Supabase Dashboard → Authentication → Users → Add user → Create new user**
    - **Email awal:** `superadmin@mutabaah.id`
-   - **Password:** `MutabaahSuper#2026`
+   - **Password:** buat kata sandi acak dan unik (minimal 12 karakter), lalu simpan di pengelola kata sandi
    - Centang **Auto Confirm User** (jika tersedia)
 2. Buka **SQL Editor** dan jalankan:
    ```sql

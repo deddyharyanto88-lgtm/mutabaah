@@ -1067,8 +1067,8 @@ function renderCredentialManagement(profiles) {
     passwordInput.type = "password";
     passwordInput.className = "credential-input";
     passwordInput.autocomplete = "new-password";
-    passwordInput.minLength = 6;
-    passwordInput.placeholder = "Minimal 6 karakter";
+    passwordInput.minLength = 12;
+    passwordInput.placeholder = "Minimal 12 karakter";
     passwordInput.setAttribute("aria-label", `Kata sandi baru untuk ${profile.full_name || profile.login_id}`);
     passwordCell.append(passwordInput);
 

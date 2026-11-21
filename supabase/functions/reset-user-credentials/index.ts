@@ -63,8 +63,8 @@ Deno.serve(async (req) => {
     if (!targetId || !/^[a-z0-9._-]{3,32}$/.test(loginId)) {
       return json({ error: "ID login harus 3–32 karakter: huruf, angka, titik, garis bawah, atau tanda hubung." }, 400);
     }
-    if (password && password.length < 6) {
-      return json({ error: "Kata sandi minimal 6 karakter." }, 400);
+    if (password && password.length < 12) {
+      return json({ error: "Kata sandi minimal 12 karakter." }, 400);
     }
     const { data: target, error: targetError } = await adminClient
       .from("profiles")

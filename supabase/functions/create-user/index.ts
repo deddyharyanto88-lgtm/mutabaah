@@ -72,8 +72,8 @@ Deno.serve(async (req) => {
     if (!cleanPassword) {
       return json({ error: "Kata sandi wajib diisi." }, 400);
     }
-    if (cleanPassword.length < 6) {
-      return json({ error: "Kata sandi minimal 6 karakter." }, 400);
+    if (cleanPassword.length < 12) {
+      return json({ error: "Kata sandi minimal 12 karakter." }, 400);
     }
 
     let cleanRole = "user";
