@@ -58,6 +58,7 @@ create table if not exists public.custom_items (
   is_active boolean not null default true,
   is_deleted boolean not null default false,
   legacy_key text,
+  sort_order numeric,
   created_at timestamptz not null default now()
 );
 
@@ -68,6 +69,8 @@ alter table public.custom_items
   add column if not exists legacy_key text;
 alter table public.custom_items
   add column if not exists is_deleted boolean not null default false;
+alter table public.custom_items
+  add column if not exists sort_order numeric;
 create unique index if not exists custom_items_legacy_key_key
   on public.custom_items (legacy_key);
 
@@ -149,6 +152,19 @@ set custom_checks = e.custom_checks || jsonb_build_object(
 from public.custom_items item
 where item.legacy_key in ('prayer_count', 'quran_pages', 'dzikir', 'sedekah')
   and not (e.custom_checks ? item.id::text);
+
+-- Urutan tampilan terpisah dari nilai amalan yang tersimpan di mutabaah_entries.
+with numbered_items as (
+  select id, row_number() over (order by created_at, id) * 1000 as position
+  from public.custom_items
+  where sort_order is null
+)
+update public.custom_items item
+set sort_order = numbered_items.position
+from numbered_items
+where item.id = numbered_items.id;
+
+alter table public.custom_items alter column sort_order set not null;
 
 -- 3) Profil otomatis saat auth.users dibuat
 create or replace function public.handle_new_user()

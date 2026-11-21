@@ -13,6 +13,7 @@ Aplikasi pencatatan amalan harian (mutabaah) berbasis web, terhubung ke **Supaba
 - Admin dapat menghapus user yang dikelolanya; super admin dapat menghapus akun user/admin
 - Super admin dapat memindahkan user dari satu admin ke admin lain tanpa menghapus riwayat mutabaahnya
 - Admin/super admin dapat menambah, mengubah nama, mengaktifkan/nonaktifkan, dan menghapus item isian sesuai cakupan role
+- Admin/super admin dapat mengubah urutan item amalan dengan tombol naik/turun tanpa mengubah nilai historis
 - 3 tingkat akses/role dengan hierarki pengelolaan akun: **user**, **admin**, **super_admin**
 - Data tersimpan di Supabase (Postgres) dengan Row Level Security (RLS)
 - Tampilan responsif
@@ -100,7 +101,7 @@ Lalu buka <http://localhost:8000>.
 
 - `profiles`: profil pengguna (`id`, `login_id`, `email` opsional, `full_name`, `role` = `user`/`admin`/`super_admin`, `created_by`, `created_at`). `created_by` menyimpan siapa yang membuat/mengelola akun (hierarki). Upgrade schema mengisi ID login akun lama dengan UUID profilnya.
 - `mutabaah_entries`: entri harian per pengguna (`entry_date`, `notes`, `custom_checks`), unik per `(user_id, entry_date)`. Item isian menyimpan checklist, angka, atau teks di `custom_checks`.
-- `custom_items`: semua item isian (`label`, `input_type`, `created_by`, `creator_role`, `is_active`, `is_deleted`). `legacy_key` menandai item hasil konversi empat item lama.
+- `custom_items`: semua item isian (`label`, `input_type`, `created_by`, `creator_role`, `is_active`, `is_deleted`, `sort_order`). `sort_order` hanya mengatur posisi tampilan; `legacy_key` menandai item hasil konversi empat item lama.
 - Kolom lama pada `mutabaah_entries` dan tabel `base_item_settings` tetap dipakai sebagai kompatibilitas agar empat item bawaan dan nilainya tetap tampil sebelum migrasi selesai. Setelah item dikonversi, nilai harian disimpan pada `custom_checks`; kolom lama tetap dipertahankan.
 
 Lihat definisi lengkap, helper hierarki, dan kebijakan RLS di [`supabase/schema.sql`](supabase/schema.sql).

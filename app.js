@@ -11,6 +11,7 @@ let currentUser = null;
 let currentProfile = null;
 let allVisibleProfiles = [];
 let allVisibleCustomItems = [];
+let customItemsSortOrderSupported = true;
 let baseItemSettings = [
   { key: "prayer_count", label: "Salat wajib", is_active: true, sort_order: 1 },
   { key: "quran_pages", label: "Tilawah Al-Qur'an", is_active: true, sort_order: 2 },
@@ -194,10 +195,13 @@ function applicableItemsForSelf() {
   return applicableItemsForProfile(currentProfile);
 }
 
-function manageableItems() {
+function customItemsForManager() {
   if (!currentProfile) return [];
-  if (currentProfile.role === "super_admin") return allVisibleCustomItems;
-  if (currentProfile.role === "admin") return allVisibleCustomItems.filter((i) => String(i.created_by) === String(currentUser.id));
+  if (currentProfile.role === "super_admin") return [...allVisibleCustomItems];
+  if (currentProfile.role === "admin") {
+    return allVisibleCustomItems.filter((item) => item.creator_role === "super_admin"
+      || String(item.created_by) === String(currentUser.id));
+  }
   return [];
 }
 
@@ -241,7 +245,7 @@ function updateRoleSections() {
     $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item isian yang berlaku.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi atau hapus user yang Anda kelola. Penghapusan akun menghapus seluruh data mutabaah user tersebut.";
-    $("customItemsHint").textContent = "Buat dan kelola item isian untuk user di bawah otorisasi Anda. Pilih jenis input; item aktif muncul di formulir mutabaah mereka.";
+    $("customItemsHint").textContent = "Buat, kelola, dan atur posisi item isian untuk user di bawah otorisasi Anda. Perubahan posisi tidak mengubah nilai yang sudah tercatat.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
   } else if (isSuper) {
@@ -249,7 +253,7 @@ function updateRoleSections() {
     $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item isian yang berlaku.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi, hapus akun user/admin, atau pindahkan user ke admin lain. Penghapusan akun menghapus data mutabaah terkait; pemindahan mempertahankan seluruh riwayat mutabaah.";
-    $("customItemsHint").textContent = "Buat dan kelola item isian untuk semua user. Pilih jenis input; item aktif muncul di formulir mutabaah mereka.";
+    $("customItemsHint").textContent = "Buat, kelola, dan atur posisi item isian untuk semua user. Perubahan posisi tidak mengubah nilai yang sudah tercatat.";
     $("newUserRoleField").hidden = false;
   }
 }
@@ -267,10 +271,12 @@ async function loadProfile() {
 async function loadCustomItems() {
   const { data, error } = await supabase
     .from("custom_items")
-    .select("id, label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key, created_at")
+    .select("id, label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key, sort_order, created_at")
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) {
+    customItemsSortOrderSupported = false;
     const legacyResult = await supabase
       .from("custom_items")
       .select("id, label, input_type, created_by, creator_role, is_active, created_at")
@@ -287,13 +293,15 @@ async function loadCustomItems() {
       );
       return false;
     }
-    allVisibleCustomItems = (legacyResult.data || []).map((item) => ({
+    allVisibleCustomItems = (legacyResult.data || []).map((item, index) => ({
       ...item,
       is_deleted: false,
       legacy_key: null,
+      sort_order: index * 1000,
     }));
     return true;
   }
+  customItemsSortOrderSupported = true;
   allVisibleCustomItems = data || [];
   return true;
 }
@@ -1086,12 +1094,15 @@ function setCredentialMessage(text, type = "") {
 function renderCustomItemsManager() {
   const wrap = $("customItemsList");
   if (!wrap) return;
-  const items = manageableItems();
+  const items = customItemsForManager();
   if (!items.length) {
     wrap.textContent = "Belum ada item isian.";
     return;
   }
 
+  const isSortOrderAvailable = customItemsSortOrderSupported
+    && items.every((item) => Number.isFinite(Number(item.sort_order)));
+  const reorderableItems = items.filter((item) => item.is_active && !item.is_deleted);
   const profileMap = new Map(allVisibleProfiles.map((p) => [String(p.id), p]));
   const table = document.createElement("table");
   table.className = "admin-table";
@@ -1130,47 +1141,75 @@ function renderCustomItemsManager() {
     const actionTd = document.createElement("td");
     actionTd.className = "row-actions";
 
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "secondary-button small";
-    editBtn.textContent = "Ubah nama";
-    editBtn.addEventListener("click", () => beginEditCustomItemLabel(tr, labelTd, item));
+    const canManageItem = currentProfile.role === "super_admin"
+      || String(item.created_by) === String(currentUser.id);
+    const sortIndex = reorderableItems.indexOf(item);
+    if (canManageItem && isSortOrderAvailable && sortIndex !== -1) {
+      const moveUpBtn = document.createElement("button");
+      moveUpBtn.type = "button";
+      moveUpBtn.className = "secondary-button small";
+      moveUpBtn.textContent = "↑";
+      moveUpBtn.setAttribute("aria-label", `Pindahkan ${item.label} ke atas`);
+      moveUpBtn.title = "Pindahkan ke atas";
+      moveUpBtn.disabled = sortIndex === 0;
+      moveUpBtn.addEventListener("click", () => moveCustomItem(item, reorderableItems, sortIndex, -1));
 
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "secondary-button small";
-    toggleBtn.textContent = item.is_active ? "Nonaktifkan" : "Aktifkan";
-    toggleBtn.addEventListener("click", async () => {
-      toggleBtn.disabled = true;
-      const { error } = await supabase.from("custom_items").update({ is_active: !item.is_active }).eq("id", item.id);
-      toggleBtn.disabled = false;
-      if (error) { alert(`Gagal mengubah item: ${error.message}`); return; }
-      await loadCustomItems();
-      render();
-      await renderAdminPanels();
-    });
+      const moveDownBtn = document.createElement("button");
+      moveDownBtn.type = "button";
+      moveDownBtn.className = "secondary-button small";
+      moveDownBtn.textContent = "↓";
+      moveDownBtn.setAttribute("aria-label", `Pindahkan ${item.label} ke bawah`);
+      moveDownBtn.title = "Pindahkan ke bawah";
+      moveDownBtn.disabled = sortIndex === reorderableItems.length - 1;
+      moveDownBtn.addEventListener("click", () => moveCustomItem(item, reorderableItems, sortIndex, 1));
+      actionTd.append(moveUpBtn, moveDownBtn);
+    }
 
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "danger-button small";
-    delBtn.textContent = item.is_deleted ? "Pulihkan" : "Hapus";
-    delBtn.addEventListener("click", async () => {
-      if (!item.is_deleted && !confirm(`Hapus item isian "${item.label}" dari formulir? Riwayat yang sudah tercatat tetap tersimpan.`)) return;
-      delBtn.disabled = true;
-      const { error } = await supabase.from("custom_items")
-        .update({ is_deleted: !item.is_deleted })
-        .eq("id", item.id);
-      delBtn.disabled = false;
-      if (error) { alert(`Gagal menghapus item: ${error.message}`); return; }
-      await loadCustomItems();
-      render();
-      await renderAdminPanels();
-    });
+    if (canManageItem) {
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "secondary-button small";
+      editBtn.textContent = "Ubah nama";
+      editBtn.addEventListener("click", () => beginEditCustomItemLabel(tr, labelTd, item));
 
-    if (item.is_deleted) {
-      actionTd.append(editBtn, delBtn);
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "secondary-button small";
+      toggleBtn.textContent = item.is_active ? "Nonaktifkan" : "Aktifkan";
+      toggleBtn.addEventListener("click", async () => {
+        toggleBtn.disabled = true;
+        const { error } = await supabase.from("custom_items").update({ is_active: !item.is_active }).eq("id", item.id);
+        toggleBtn.disabled = false;
+        if (error) { alert(`Gagal mengubah item: ${error.message}`); return; }
+        await loadCustomItems();
+        render();
+        await renderAdminPanels();
+      });
+
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "danger-button small";
+      delBtn.textContent = item.is_deleted ? "Pulihkan" : "Hapus";
+      delBtn.addEventListener("click", async () => {
+        if (!item.is_deleted && !confirm(`Hapus item isian "${item.label}" dari formulir? Riwayat yang sudah tercatat tetap tersimpan.`)) return;
+        delBtn.disabled = true;
+        const { error } = await supabase.from("custom_items")
+          .update({ is_deleted: !item.is_deleted })
+          .eq("id", item.id);
+        delBtn.disabled = false;
+        if (error) { alert(`Gagal menghapus item: ${error.message}`); return; }
+        await loadCustomItems();
+        render();
+        await renderAdminPanels();
+      });
+
+      if (item.is_deleted) {
+        actionTd.append(editBtn, delBtn);
+      } else {
+        actionTd.append(editBtn, toggleBtn, delBtn);
+      }
     } else {
-      actionTd.append(editBtn, toggleBtn, delBtn);
+      actionTd.textContent = "Item global";
     }
     tr.append(actionTd);
     tbody.append(tr);
@@ -1178,6 +1217,38 @@ function renderCustomItemsManager() {
 
   table.append(tbody);
   wrap.replaceChildren(table);
+  if (!isSortOrderAvailable) {
+    const hint = document.createElement("p");
+    hint.className = "admin-hint";
+    hint.textContent = "Jalankan ulang supabase/schema.sql untuk mengaktifkan pengurutan item.";
+    wrap.append(hint);
+  }
+}
+
+async function moveCustomItem(item, items, index, direction) {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= items.length) return;
+  const previous = items[targetIndex - 1];
+  const target = items[targetIndex];
+  const next = items[targetIndex + 1];
+  const targetOrder = Number(target.sort_order);
+  const previousOrder = previous ? Number(previous.sort_order) : null;
+  const nextOrder = next ? Number(next.sort_order) : null;
+  const newOrder = direction < 0
+    ? previous ? (previousOrder + targetOrder) / 2 : targetOrder - 1000
+    : next ? (targetOrder + nextOrder) / 2 : targetOrder + 1000;
+
+  const { error } = await supabase.from("custom_items")
+    .update({ sort_order: newOrder })
+    .eq("id", item.id);
+  if (error) {
+    alert(`Gagal mengubah urutan item: ${error.message}`);
+    return;
+  }
+  const itemsLoaded = await loadCustomItems();
+  if (!itemsLoaded) return;
+  render();
+  await renderAdminPanels();
 }
 
 function beginEditCustomItemLabel(row, labelTd, item) {
@@ -1494,6 +1565,7 @@ async function handleCreateCustomItem(event) {
       created_by: currentUser.id,
       creator_role: currentProfile.role,
       is_active: true,
+      sort_order: Math.max(0, ...allVisibleCustomItems.map((item) => Number(item.sort_order) || 0)) + 1000,
     });
     if (error) throw error;
     itemSaved = true;
