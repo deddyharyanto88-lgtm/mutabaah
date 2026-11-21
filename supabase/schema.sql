@@ -45,7 +45,7 @@ create index if not exists mutabaah_entries_user_date_idx on public.mutabaah_ent
 create index if not exists mutabaah_entries_date_idx on public.mutabaah_entries (entry_date desc);
 create index if not exists profiles_created_by_idx on public.profiles (created_by);
 
--- 2b) Item tugas tambahan (dibuat oleh admin/super_admin untuk bawahan)
+-- 2b) Item isian yang dibuat oleh admin/super_admin sesuai cakupan role
 -- creator_role = 'super_admin' -> berlaku untuk semua user
 -- creator_role = 'admin'       -> berlaku untuk user yang dibuat (dikelola) admin tersebut
 create table if not exists public.custom_items (
@@ -56,12 +56,20 @@ create table if not exists public.custom_items (
   created_by uuid not null references public.profiles(id) on delete cascade,
   creator_role text not null check (creator_role in ('admin', 'super_admin')),
   is_active boolean not null default true,
+  is_deleted boolean not null default false,
+  legacy_key text,
   created_at timestamptz not null default now()
 );
 
 -- Upgrade aman: item lama tetap menggunakan checklist.
 alter table public.custom_items
   add column if not exists input_type text not null default 'check';
+alter table public.custom_items
+  add column if not exists legacy_key text;
+alter table public.custom_items
+  add column if not exists is_deleted boolean not null default false;
+create unique index if not exists custom_items_legacy_key_key
+  on public.custom_items (legacy_key);
 
 do $$
 begin
@@ -81,14 +89,19 @@ $$;
 create index if not exists custom_items_created_by_idx on public.custom_items (created_by);
 create index if not exists custom_items_active_idx on public.custom_items (is_active);
 
--- 2c) Konfigurasi item bawaan (dikelola super_admin)
+-- 2c) Data lama untuk konversi empat item sebelumnya ke item isian
 create table if not exists public.base_item_settings (
   key text primary key check (key in ('prayer_count', 'quran_pages', 'dzikir', 'sedekah')),
   label text not null check (char_length(trim(label)) > 0),
   is_active boolean not null default true,
+  is_deleted boolean not null default false,
   sort_order int not null,
   updated_at timestamptz not null default now()
 );
+
+-- Retain prior deletion state during conversion to editable item rows.
+alter table public.base_item_settings
+  add column if not exists is_deleted boolean not null default false;
 
 insert into public.base_item_settings (key, label, is_active, sort_order) values
   ('prayer_count', 'Salat wajib', true, 1),
@@ -96,6 +109,46 @@ insert into public.base_item_settings (key, label, is_active, sort_order) values
   ('dzikir', 'Dzikir pagi & petang', true, 3),
   ('sedekah', 'Sedekah atau berbagi', true, 4)
 on conflict (key) do nothing;
+
+-- Convert the former built-in items to ordinary editable input items.
+insert into public.custom_items (label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key)
+select
+  settings.label,
+  case settings.key
+    when 'prayer_count' then 'number'
+    when 'quran_pages' then 'number'
+    else 'check'
+  end,
+  owner.id,
+  'super_admin',
+  settings.is_active,
+  settings.is_deleted,
+  settings.key
+from public.base_item_settings settings
+cross join lateral (
+  select id
+  from public.profiles
+  where role = 'super_admin'
+  order by created_at, id
+  limit 1
+) owner
+order by settings.sort_order, settings.key
+on conflict (legacy_key) do nothing;
+
+-- Move historical built-in values into the same JSON field used by all input items.
+update public.mutabaah_entries e
+set custom_checks = e.custom_checks || jsonb_build_object(
+  item.id::text,
+  case item.legacy_key
+    when 'prayer_count' then to_jsonb(e.prayer_count)
+    when 'quran_pages' then to_jsonb(e.quran_pages)
+    when 'dzikir' then to_jsonb(e.dzikir)
+    when 'sedekah' then to_jsonb(e.sedekah)
+  end
+)
+from public.custom_items item
+where item.legacy_key in ('prayer_count', 'quran_pages', 'dzikir', 'sedekah')
+  and not (e.custom_checks ? item.id::text);
 
 -- 3) Profil otomatis saat auth.users dibuat
 create or replace function public.handle_new_user()
@@ -281,8 +334,8 @@ create policy "entries_delete_own"
   on public.mutabaah_entries for delete
   using (auth.uid() = user_id);
 
--- custom_items: item tugas tambahan
--- Baca: super_admin semua; pembuat item miliknya; admin/user bisa baca item aktif super_admin (untuk rekap & pengisian);
+-- custom_items: item isian
+-- Baca: super_admin semua; pembuat item miliknya; admin/user bisa baca item aktif super_admin;
 --       user bisa baca item aktif admin pengelolanya.
 create policy "custom_items_select"
   on public.custom_items for select
@@ -313,7 +366,7 @@ create policy "custom_items_delete"
   on public.custom_items for delete
   using (created_by = auth.uid() or public.is_super_admin());
 
--- base_item_settings: konfigurasi item bawaan (global)
+-- base_item_settings: tabel kompatibilitas untuk konversi item lama
 -- Baca: semua pengguna terautentikasi
 create policy "base_item_settings_select"
   on public.base_item_settings for select

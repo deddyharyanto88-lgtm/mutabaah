@@ -1,24 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./supabase-config.js";
 
-const BASE_ITEM_META = {
-  prayer_count: { type: "prayer", icon: "☀", hint: "Jumlah salat yang dilakukan hari ini", category: "Ibadah" },
-  quran_pages: { type: "pages", icon: "☾", hint: "Jumlah halaman yang dibaca hari ini", category: "Tilawah" },
-  dzikir: { type: "check", category: "Dzikir" },
-  sedekah: { type: "check", category: "Akhlak" },
-};
-
-const BASE_ITEM_ORDER = ["prayer_count", "quran_pages", "dzikir", "sedekah"];
-
-function defaultBaseItemSettings() {
-  return [
-    { key: "prayer_count", label: "Salat wajib", is_active: true, sort_order: 1 },
-    { key: "quran_pages", label: "Tilawah Al-Qur'an", is_active: true, sort_order: 2 },
-    { key: "dzikir", label: "Dzikir pagi & petang", is_active: true, sort_order: 3 },
-    { key: "sedekah", label: "Sedekah atau berbagi", is_active: true, sort_order: 4 },
-  ];
-}
-
 const isConfigured = SUPABASE_URL && !SUPABASE_URL.includes("YOUR_PROJECT_REF")
   && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY");
 
@@ -29,7 +11,6 @@ let currentUser = null;
 let currentProfile = null;
 let allVisibleProfiles = [];
 let allVisibleCustomItems = [];
-let baseItemSettings = defaultBaseItemSettings();
 let currentEntry = emptyEntry();
 let weekEntries = [];
 let adminRecapRows = [];
@@ -40,7 +21,7 @@ let recapChannel = null;
 const $ = (id) => document.getElementById(id);
 
 function emptyEntry() {
-  return { prayer_count: 0, quran_pages: 0, dzikir: false, sedekah: false, notes: "", custom_checks: {} };
+  return { notes: "", custom_checks: {} };
 }
 
 const dateKey = (date) => {
@@ -112,13 +93,6 @@ function setCustomItemMessage(text, type = "") {
   el.className = `auth-message ${type}`.trim();
 }
 
-function setBaseItemsMessage(text, type = "") {
-  const el = $("baseItemsMessage");
-  if (!el) return;
-  el.textContent = text || "";
-  el.className = `auth-message ${type}`.trim();
-}
-
 function roleLabel(role) {
   if (role === "super_admin") return "Super Admin";
   if (role === "admin") return "Admin";
@@ -128,10 +102,6 @@ function roleLabel(role) {
 function normalizeEntry(data) {
   if (!data) return emptyEntry();
   return {
-    prayer_count: Number(data.prayer_count) || 0,
-    quran_pages: Number(data.quran_pages) || 0,
-    dzikir: Boolean(data.dzikir),
-    sedekah: Boolean(data.sedekah),
     notes: data.notes || "",
     custom_checks: (data.custom_checks && typeof data.custom_checks === "object" && !Array.isArray(data.custom_checks))
       ? data.custom_checks
@@ -153,7 +123,9 @@ function customItemValue(entry, itemId) {
 function isCustomItemDone(entry, item) {
   const value = customItemValue(entry, item.id);
   if (item.input_type === "check") return value === true;
-  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "number") {
+    return item.legacy_key ? value > 0 : Number.isFinite(value);
+  }
   return typeof value === "string" && value.trim() !== "";
 }
 
@@ -162,69 +134,19 @@ function setCustomItemValue(entry, itemId, value) {
   entry.custom_checks[String(itemId)] = value;
 }
 
-function normalizeBaseItemSettings(rows) {
-  const defaults = defaultBaseItemSettings();
-  const byKey = new Map((rows || []).map((r) => [r.key, r]));
-  return defaults.map((def) => {
-    const row = byKey.get(def.key);
-    if (!row) return { ...def };
-    const label = typeof row.label === "string" && row.label.trim() ? row.label.trim() : def.label;
-    const is_active = typeof row.is_active === "boolean" ? row.is_active : Boolean(row.is_active);
-    const sort_order = Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : def.sort_order;
-    return { key: def.key, label, is_active, sort_order };
-  }).sort((a, b) => (a.sort_order - b.sort_order) || BASE_ITEM_ORDER.indexOf(a.key) - BASE_ITEM_ORDER.indexOf(b.key));
-}
-
-function orderedBaseItems() {
-  return [...baseItemSettings].sort((a, b) => (a.sort_order - b.sort_order) || BASE_ITEM_ORDER.indexOf(a.key) - BASE_ITEM_ORDER.indexOf(b.key));
-}
-
-function activeBaseItems() {
-  return orderedBaseItems().filter((i) => i.is_active);
-}
-
-function baseItemConfig(key) {
-  return baseItemSettings.find((i) => i.key === key) || defaultBaseItemSettings().find((i) => i.key === key);
-}
-
-function isBaseItemActive(key) {
-  return Boolean(baseItemConfig(key)?.is_active);
-}
-
-function baseItemLabel(key) {
-  return baseItemConfig(key)?.label || (defaultBaseItemSettings().find((i) => i.key === key)?.label || key);
-}
-
-function baseMeta(key) {
-  return BASE_ITEM_META[key] || { type: "check", category: "Lainnya" };
-}
-
-async function loadBaseItemSettings() {
-  if (!supabase) {
-    baseItemSettings = defaultBaseItemSettings();
-    return;
-  }
-  const { data, error } = await supabase
-    .from("base_item_settings")
-    .select("key, label, is_active, sort_order");
-  if (error) {
-    console.warn("Gagal memuat base_item_settings, gunakan default.", error);
-    baseItemSettings = defaultBaseItemSettings();
-    return;
-  }
-  baseItemSettings = normalizeBaseItemSettings(data || []);
-}
-
 function applicableItemsForProfile(profile) {
   if (!profile) return [];
   if (profile.role === "user") {
-    return allVisibleCustomItems.filter((i) => i.is_active && (
+    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && (
       i.creator_role === "super_admin" ||
       (i.creator_role === "admin" && String(i.created_by) === String(profile.created_by))
     ));
   }
   if (profile.role === "admin") {
-    return allVisibleCustomItems.filter((i) => i.is_active && i.creator_role === "super_admin");
+    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin");
+  }
+  if (profile.role === "super_admin") {
+    return allVisibleCustomItems.filter((i) => i.is_active && !i.is_deleted && i.creator_role === "super_admin");
   }
   return [];
 }
@@ -240,38 +162,22 @@ function manageableItems() {
   return [];
 }
 
-function isBaseValueDone(key, entry) {
-  const e = entry || emptyEntry();
-  if (key === "prayer_count") return Number(e.prayer_count) > 0;
-  if (key === "quran_pages") return Number(e.quran_pages) > 0;
-  if (key === "dzikir") return Boolean(e.dzikir);
-  if (key === "sedekah") return Boolean(e.sedekah);
-  return false;
-}
-
-function baseCompletedCount(entry) {
-  const e = entry || emptyEntry();
-  return activeBaseItems().reduce((sum, item) => sum + (isBaseValueDone(item.key, e) ? 1 : 0), 0);
-}
-
 function completedCountForProfile(entry, profile) {
   const items = applicableItemsForProfile(profile);
-  const customDone = items.filter((i) => isCustomItemDone(entry, i)).length;
-  return baseCompletedCount(entry) + customDone;
+  return items.filter((i) => isCustomItemDone(entry, i)).length;
 }
 
 function totalTargetsForProfile(profile) {
-  return activeBaseItems().length + applicableItemsForProfile(profile).length;
+  return applicableItemsForProfile(profile).length;
 }
 
 function completedCountForSelf(entry) {
   const items = applicableItemsForSelf();
-  const customDone = items.filter((i) => isCustomItemDone(entry, i)).length;
-  return baseCompletedCount(entry) + customDone;
+  return items.filter((i) => isCustomItemDone(entry, i)).length;
 }
 
 function totalTargetsForSelf() {
-  return activeBaseItems().length + applicableItemsForSelf().length;
+  return applicableItemsForSelf().length;
 }
 
 function showView(loggedIn) {
@@ -289,23 +195,22 @@ function updateRoleSections() {
   $("createAccountSection").hidden = !(isAdmin || isSuper);
   $("customItemsSection").hidden = !(isAdmin || isSuper);
   $("credentialManagementSection").hidden = !(isAdmin || isSuper);
-  $("baseItemsSection").hidden = !isSuper;
   $("superAdminSection").hidden = !isSuper;
 
   if (isAdmin) {
     $("adminRecapTitle").textContent = `Rekap user di bawah saya (${formatRangeLabel(adminRecapRange.from, adminRecapRange.to)})`;
-    $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
+    $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item isian yang berlaku.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi atau hapus user yang Anda kelola. Penghapusan akun menghapus seluruh data mutabaah user tersebut.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh user di bawah otorisasi Anda. Pilih jenis input saat membuat item; item aktif akan muncul di mutabaah mereka.";
+    $("customItemsHint").textContent = "Buat dan kelola item isian untuk user di bawah otorisasi Anda. Pilih jenis input; item aktif muncul di formulir mutabaah mereka.";
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
   } else if (isSuper) {
     $("adminRecapTitle").textContent = `Rekap semua user (${formatRangeLabel(adminRecapRange.from, adminRecapRange.to)})`;
-    $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
+    $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item isian yang berlaku.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi, hapus akun user/admin, atau pindahkan user ke admin lain. Penghapusan akun menghapus data mutabaah terkait; pemindahan mempertahankan seluruh riwayat mutabaah.";
-    $("customItemsHint").textContent = "Tambah item tugas yang harus diisi oleh semua user (di bawah otorisasi admin dan super admin). Pilih jenis input saat membuat item; item aktif akan muncul di mutabaah mereka.";
+    $("customItemsHint").textContent = "Buat dan kelola item isian untuk semua user. Pilih jenis input; item aktif muncul di formulir mutabaah mereka.";
     $("newUserRoleField").hidden = false;
   }
 }
@@ -323,7 +228,7 @@ async function loadProfile() {
 async function loadCustomItems() {
   const { data, error } = await supabase
     .from("custom_items")
-    .select("id, label, input_type, created_by, creator_role, is_active, created_at")
+    .select("id, label, input_type, created_by, creator_role, is_active, is_deleted, legacy_key, created_at")
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) {
@@ -337,7 +242,7 @@ async function loadCustomItems() {
 async function loadEntry() {
   const { data, error } = await supabase
     .from("mutabaah_entries")
-    .select("entry_date, prayer_count, quran_pages, dzikir, sedekah, notes, custom_checks")
+    .select("entry_date, notes, custom_checks")
     .eq("user_id", currentUser.id)
     .eq("entry_date", dateKey(selectedDate))
     .maybeSingle();
@@ -348,7 +253,7 @@ async function loadEntry() {
 async function loadWeekEntries() {
   const { data, error } = await supabase
     .from("mutabaah_entries")
-    .select("entry_date, prayer_count, quran_pages, dzikir, sedekah, notes, custom_checks")
+    .select("entry_date, notes, custom_checks")
     .eq("user_id", currentUser.id)
     .gte("entry_date", sevenDaysAgoKey())
     .lte("entry_date", dateKey(new Date()));
@@ -362,10 +267,6 @@ async function saveEntry() {
   const payload = {
     user_id: currentUser.id,
     entry_date: dateKey(selectedDate),
-    prayer_count: Number(currentEntry.prayer_count) || 0,
-    quran_pages: Number(currentEntry.quran_pages) || 0,
-    dzikir: Boolean(currentEntry.dzikir),
-    sedekah: Boolean(currentEntry.sedekah),
     notes: currentEntry.notes || "",
     custom_checks: currentEntry.custom_checks || {},
     updated_at: new Date().toISOString(),
@@ -415,7 +316,6 @@ function render() {
   if (!currentUser) return;
   const todayKey = dateKey(new Date());
   const isToday = dateKey(selectedDate) === todayKey;
-  const activeBase = activeBaseItems();
   const applicable = applicableItemsForSelf();
 
   $("dayName").textContent = isToday
@@ -430,39 +330,11 @@ function render() {
   const dailyItems = $("dailyItems");
   const nodes = [];
 
-  activeBase.forEach((item) => {
-    const meta = baseMeta(item.key);
-    if (meta.type === "check") {
-      nodes.push(createCheckItem({
-        label: item.label,
-        category: meta.category || "Amalan",
-        checked: Boolean(currentEntry[item.key]),
-        onChange: (checked) => {
-          currentEntry[item.key] = checked;
-          render();
-          scheduleSave(true);
-        },
-      }));
-    } else if (meta.type === "prayer") {
-      nodes.push(createPrayerCard(item, Number(currentEntry.prayer_count) || 0, (value) => {
-        currentEntry.prayer_count = value;
-        render();
-        scheduleSave(true);
-      }));
-    } else if (meta.type === "pages") {
-      nodes.push(createPagesCard(item, Number(currentEntry.quran_pages) || 0, (value) => {
-        currentEntry.quran_pages = value;
-        updateProgressDisplay();
-        scheduleSave(false);
-      }));
-    }
-  });
-
   applicable.forEach((item) => {
     if (item.input_type === "check") {
       nodes.push(createCheckItem({
         label: item.label,
-        category: "Tugas tambahan",
+        category: "Item isian",
         checked: isCustomItemDone(currentEntry, item),
         onChange: (checked) => {
           setCustomItemValue(currentEntry, item.id, checked);
@@ -546,68 +418,10 @@ function createCustomValueItem({ item, value, onChange }) {
   return label;
 }
 
-function createPrayerCard(item, value, onChange) {
-  const label = document.createElement("label");
-  label.className = "input-card";
-  const icon = document.createElement("span");
-  icon.className = "input-icon";
-  icon.textContent = baseMeta(item.key).icon || "☀";
-  const content = document.createElement("span");
-  content.className = "input-content";
-  const strong = document.createElement("strong");
-  strong.textContent = item.label;
-  const small = document.createElement("small");
-  small.textContent = baseMeta(item.key).hint || "Jumlah salat yang dilakukan hari ini";
-  content.append(strong, small);
-  const select = document.createElement("select");
-  select.setAttribute("aria-label", item.label);
-  for (let i = 0; i <= 5; i += 1) {
-    const opt = document.createElement("option");
-    opt.value = String(i);
-    opt.textContent = `${i} salat`;
-    if (i === Math.max(0, Math.min(5, Number(value) || 0))) opt.selected = true;
-    select.append(opt);
-  }
-  select.addEventListener("change", () => onChange(Number(select.value)));
-  label.append(icon, content, select);
-  return label;
-}
-
-function createPagesCard(item, value, onChange) {
-  const label = document.createElement("label");
-  label.className = "input-card";
-  const icon = document.createElement("span");
-  icon.className = "input-icon";
-  icon.textContent = baseMeta(item.key).icon || "☾";
-  const content = document.createElement("span");
-  content.className = "input-content";
-  const strong = document.createElement("strong");
-  strong.textContent = item.label;
-  const small = document.createElement("small");
-  small.textContent = baseMeta(item.key).hint || "Jumlah halaman yang dibaca hari ini";
-  content.append(strong, small);
-  const wrap = document.createElement("span");
-  wrap.className = "number-input";
-  const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.step = "1";
-  input.placeholder = "0";
-  input.setAttribute("aria-label", item.label);
-  input.value = value ? String(value) : "";
-  input.addEventListener("input", () => onChange(Math.max(0, Number(input.value) || 0)));
-  const unit = document.createElement("span");
-  unit.textContent = "hal";
-  wrap.append(input, unit);
-  label.append(icon, content, wrap);
-  return label;
-}
-
 function renderSummary() {
   const days = [];
   const cursor = new Date();
   const applicable = applicableItemsForSelf();
-  const activeBase = activeBaseItems();
   for (let index = 6; index >= 0; index -= 1) {
     const date = new Date(cursor);
     date.setDate(cursor.getDate() - index);
@@ -627,52 +441,31 @@ function renderSummary() {
   const charts = $("summaryCharts");
   const chartNodes = [];
 
-  activeBase.forEach((item) => {
-    if (item.key === "prayer_count") {
-      chartNodes.push(createBarChart({
-        title: item.label,
-        subtitle: "jumlah per hari",
-        max: 5,
-        unit: "salat",
-        tone: "teal",
-        days: days.map((day) => ({
-          label: dayLabel(day.date),
-          value: Number(day.data.prayer_count || 0),
-          display: `${Number(day.data.prayer_count || 0)}/5`,
-        })),
-      }));
-    } else if (item.key === "quran_pages") {
-      const maxPages = Math.max(5, ...days.map((day) => Number(day.data.quran_pages || 0)));
-      chartNodes.push(createBarChart({
-        title: item.label,
-        subtitle: "halaman per hari",
-        max: maxPages,
-        unit: "hal",
-        tone: "gold",
-        days: days.map((day) => ({
-          label: dayLabel(day.date),
-          value: Number(day.data.quran_pages || 0),
-          display: `${Number(day.data.quran_pages || 0)}`,
-        })),
-      }));
-    }
+  const numericItems = applicable.filter((item) => item.input_type === "number");
+  numericItems.forEach((item, index) => {
+    const values = days.map((day) => {
+      const value = customItemValue(day.data, item.id);
+      return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    });
+    const max = Math.max(1, ...values);
+    chartNodes.push(createBarChart({
+      title: item.label,
+      subtitle: "jumlah per hari",
+      max,
+      unit: "jumlah",
+      tone: index % 2 === 0 ? "teal" : "gold",
+      days: days.map((day, dayIndex) => ({
+        label: dayLabel(day.date),
+        value: values[dayIndex],
+        display: String(values[dayIndex]),
+      })),
+    }));
   });
 
-  const statusRows = [];
-  activeBase.forEach((item) => {
-    if (item.key === "dzikir" || item.key === "sedekah") {
-      statusRows.push({
-        label: item.label,
-        days: days.map((day) => ({ label: dayLabel(day.date), done: Boolean(day.data[item.key]) })),
-      });
-    }
-  });
-  applicable.forEach((item) => {
-    statusRows.push({
-      label: item.label,
-      days: days.map((day) => ({ label: dayLabel(day.date), done: isCustomItemDone(day.data, item) })),
-    });
-  });
+  const statusRows = applicable.filter((item) => item.input_type !== "number").map((item) => ({
+    label: item.label,
+    days: days.map((day) => ({ label: dayLabel(day.date), done: isCustomItemDone(day.data, item) })),
+  }));
 
   if (statusRows.length) {
     chartNodes.push(createStatusChart({
@@ -695,17 +488,16 @@ function renderSummary() {
 function renderSummaryStats(days, targetPercentage) {
   const wrap = $("summaryStats");
   if (!wrap) return;
-  const activeBase = activeBaseItems();
+  const applicable = applicableItemsForSelf();
   const nodes = [];
 
-  activeBase.forEach((item) => {
-    if (item.key === "prayer_count") {
-      const totalPrayer = days.reduce((sum, day) => sum + Number(day.data.prayer_count || 0), 0);
-      nodes.push(createStatBox(String(totalPrayer), "salat / 35"));
-    } else if (item.key === "quran_pages") {
-      const totalPages = days.reduce((sum, day) => sum + Number(day.data.quran_pages || 0), 0);
-      nodes.push(createStatBox(String(totalPages), "halaman"));
-    }
+  applicable.filter((item) => item.input_type === "number").forEach((item) => {
+    const total = days.reduce((sum, day) => {
+      const value = customItemValue(day.data, item.id);
+      return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+    }, 0);
+    const label = item.legacy_key === "quran_pages" ? "halaman" : "jumlah";
+    nodes.push(createStatBox(String(total), `${item.label} · ${label}`));
   });
 
   nodes.push(createStatBox(`${targetPercentage}%`, "target tercapai"));
@@ -862,7 +654,7 @@ async function renderAdminPanels() {
   if (scopedUsers.length) {
     const entriesRes = await supabase
       .from("mutabaah_entries")
-      .select("user_id, entry_date, prayer_count, quran_pages, dzikir, sedekah, custom_checks")
+      .select("user_id, entry_date, custom_checks")
       .in("user_id", scopedUsers.map((p) => p.id))
       .gte("entry_date", from)
       .lte("entry_date", to)
@@ -881,7 +673,6 @@ async function renderAdminPanels() {
 
   renderAdminSummary(scopedUsers, byUser);
   renderCustomItemsManager();
-  renderBaseItemsManager();
   renderCredentialManagement(allVisibleProfiles);
   if (currentProfile.role === "super_admin") renderRoleManagement(allVisibleProfiles);
 }
@@ -889,7 +680,6 @@ async function renderAdminPanels() {
 function renderAdminSummary(users, byUser) {
   const wrap = $("adminUsersSummary");
   adminRecapRows = [];
-  const activeBase = activeBaseItems();
   const showManager = currentProfile.role === "super_admin";
   const dayCount = inclusiveDayCount(adminRecapRange.from, adminRecapRange.to);
   const rangeLabel = formatRangeLabel(adminRecapRange.from, adminRecapRange.to);
@@ -898,14 +688,14 @@ function renderAdminSummary(users, byUser) {
   title.textContent = currentProfile.role === "admin"
     ? `Rekap user di bawah saya ${periodLabel}`
     : `Rekap semua user ${periodLabel}`;
-  const customItems = [];
-  const customItemMap = new Map();
+  const items = [];
+  const itemMap = new Map();
   users.forEach((profile) => {
     applicableItemsForProfile(profile).forEach((item) => {
       const key = String(item.id);
-      if (!customItemMap.has(key)) {
-        customItemMap.set(key, item);
-        customItems.push(item);
+      if (!itemMap.has(key)) {
+        itemMap.set(key, item);
+        items.push(item);
       }
     });
   });
@@ -922,12 +712,7 @@ function renderAdminSummary(users, byUser) {
   const headRow = document.createElement("tr");
   headRow.append(th("Pengguna"));
   if (showManager) headRow.append(th("Dikelola oleh"));
-  activeBase.forEach((item) => {
-    if (item.key === "prayer_count") headRow.append(th(`${item.label} (${dayCount} hari)`));
-    else if (item.key === "quran_pages") headRow.append(th(`${item.label} (${dayCount} hari)`));
-    else headRow.append(th(`${item.label} (${dayCount} hari)`));
-  });
-  customItems.forEach((item) => headRow.append(th(`${item.label} (${dayCount} hari)`)));
+  items.forEach((item) => headRow.append(th(`${item.label} (${dayCount} hari)`)));
   headRow.append(th(`Target (${dayCount} hari)`));
   thead.append(headRow);
   table.append(thead);
@@ -949,7 +734,6 @@ function renderAdminSummary(users, byUser) {
       name: p.full_name || p.login_id || "-",
       email: p.email || "",
       manager: managerLabel,
-      base: {},
       custom: {},
       done,
       denom,
@@ -962,25 +746,9 @@ function renderAdminSummary(users, byUser) {
     tr.append(nameTd);
     if (showManager) tr.append(cell(managerLabel));
 
-    activeBase.forEach((item) => {
-      if (item.key === "prayer_count") {
-        const prayer = list.reduce((s, e) => s + Number(e.prayer_count || 0), 0);
-        recap.base[item.key] = prayer;
-        tr.append(cell(`${prayer} / ${dayCount * 5}`));
-      } else if (item.key === "quran_pages") {
-        const pages = list.reduce((s, e) => s + Number(e.quran_pages || 0), 0);
-        recap.base[item.key] = pages;
-        tr.append(cell(String(pages)));
-      } else {
-        const doneCount = list.filter((e) => Boolean(e[item.key])).length;
-        recap.base[item.key] = doneCount;
-        tr.append(cell(`${doneCount} / ${dayCount}`));
-      }
-    });
-
     const applicable = applicableItemsForProfile(p);
     const applicableIds = new Set(applicable.map((item) => String(item.id)));
-    customItems.forEach((item) => {
+    items.forEach((item) => {
       const key = String(item.id);
       if (!applicableIds.has(key)) {
         recap.custom[key] = "-";
@@ -1245,7 +1013,7 @@ function renderCustomItemsManager() {
   if (!wrap) return;
   const items = manageableItems();
   if (!items.length) {
-    wrap.textContent = "Belum ada item tugas tambahan.";
+    wrap.textContent = "Belum ada item isian.";
     return;
   }
 
@@ -1279,8 +1047,8 @@ function renderCustomItemsManager() {
 
     const statusTd = document.createElement("td");
     const pill = document.createElement("span");
-    pill.className = `status-pill ${item.is_active ? "active" : "inactive"}`;
-    pill.textContent = item.is_active ? "Aktif" : "Nonaktif";
+    pill.className = `status-pill ${item.is_deleted ? "inactive" : item.is_active ? "active" : "inactive"}`;
+    pill.textContent = item.is_deleted ? "Dihapus" : item.is_active ? "Aktif" : "Nonaktif";
     statusTd.append(pill);
     tr.append(statusTd);
 
@@ -1310,11 +1078,13 @@ function renderCustomItemsManager() {
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "danger-button small";
-    delBtn.textContent = "Hapus";
+    delBtn.textContent = item.is_deleted ? "Pulihkan" : "Hapus";
     delBtn.addEventListener("click", async () => {
-      if (!confirm(`Hapus item "${item.label}"?`)) return;
+      if (!item.is_deleted && !confirm(`Hapus item isian "${item.label}" dari formulir? Riwayat yang sudah tercatat tetap tersimpan.`)) return;
       delBtn.disabled = true;
-      const { error } = await supabase.from("custom_items").delete().eq("id", item.id);
+      const { error } = await supabase.from("custom_items")
+        .update({ is_deleted: !item.is_deleted })
+        .eq("id", item.id);
       delBtn.disabled = false;
       if (error) { alert(`Gagal menghapus item: ${error.message}`); return; }
       await loadCustomItems();
@@ -1322,7 +1092,11 @@ function renderCustomItemsManager() {
       await renderAdminPanels();
     });
 
-    actionTd.append(editBtn, toggleBtn, delBtn);
+    if (item.is_deleted) {
+      actionTd.append(editBtn, delBtn);
+    } else {
+      actionTd.append(editBtn, toggleBtn, delBtn);
+    }
     tr.append(actionTd);
     tbody.append(tr);
   });
@@ -1404,192 +1178,6 @@ function customItemTypeLabel(type) {
   if (type === "number") return "Angka (jumlah)";
   if (type === "text") return "Isi manual";
   return "Checklist";
-}
-
-function renderBaseItemsManager() {
-  const wrap = $("baseItemsList");
-  if (!wrap) return;
-  if (!currentProfile || currentProfile.role !== "super_admin") {
-    wrap.replaceChildren();
-    return;
-  }
-
-  const items = orderedBaseItems();
-  const table = document.createElement("table");
-  table.className = "admin-table";
-  table.innerHTML = `<thead><tr>
-    <th>Urutan</th><th>Item</th><th>Tipe</th><th>Status</th><th>Aksi</th>
-  </tr></thead>`;
-  const tbody = document.createElement("tbody");
-
-  items.forEach((item, index) => {
-    const tr = document.createElement("tr");
-    tr.append(cell(String(index + 1)));
-
-    const labelTd = document.createElement("td");
-    labelTd.className = "item-label-cell";
-    labelTd.textContent = item.label;
-    tr.append(labelTd);
-
-    tr.append(cell(baseTypeLabel(item.key)));
-
-    const statusTd = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `status-pill ${item.is_active ? "active" : "inactive"}`;
-    pill.textContent = item.is_active ? "Aktif" : "Nonaktif";
-    statusTd.append(pill);
-    tr.append(statusTd);
-
-    const actionTd = document.createElement("td");
-    actionTd.className = "row-actions";
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "secondary-button small";
-    editBtn.textContent = "Ubah nama";
-
-    const toggleBtn = document.createElement("button");
-    toggleBtn.type = "button";
-    toggleBtn.className = "secondary-button small";
-    toggleBtn.textContent = item.is_active ? "Nonaktifkan" : "Aktifkan";
-
-    const upBtn = document.createElement("button");
-    upBtn.type = "button";
-    upBtn.className = "secondary-button small";
-    upBtn.textContent = "Naik";
-    upBtn.disabled = index === 0;
-
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.className = "secondary-button small";
-    downBtn.textContent = "Turun";
-    downBtn.disabled = index === items.length - 1;
-
-    editBtn.addEventListener("click", () => beginEditBaseItemLabel(tr, labelTd, item));
-    toggleBtn.addEventListener("click", async () => {
-      await updateBaseItemSetting(item.key, { is_active: !item.is_active }, toggleBtn);
-    });
-    upBtn.addEventListener("click", async () => {
-      if (index === 0) return;
-      await swapBaseItemOrder(item, items[index - 1], upBtn);
-    });
-    downBtn.addEventListener("click", async () => {
-      if (index === items.length - 1) return;
-      await swapBaseItemOrder(item, items[index + 1], downBtn);
-    });
-
-    actionTd.append(editBtn, toggleBtn, upBtn, downBtn);
-    tr.append(actionTd);
-    tbody.append(tr);
-  });
-
-  table.append(tbody);
-  wrap.replaceChildren(table);
-}
-
-function baseTypeLabel(key) {
-  if (key === "prayer_count") return "Khusus: pilihan 0–5 salat";
-  if (key === "quran_pages") return "Khusus: angka halaman";
-  if (key === "dzikir" || key === "sedekah") return "Khusus: checklist";
-  return "Khusus";
-}
-
-function beginEditBaseItemLabel(row, labelTd, item) {
-  if (row.dataset.editing === "true") return;
-  row.dataset.editing = "true";
-  const original = item.label;
-  labelTd.textContent = "";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "inline-edit-input";
-  input.value = original;
-  input.setAttribute("aria-label", "Nama item bawaan");
-  labelTd.append(input);
-  input.focus();
-  input.select();
-
-  const actionTd = row.querySelector(".row-actions");
-  const prevActions = Array.from(actionTd.childNodes);
-  actionTd.replaceChildren();
-
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "primary-button small";
-  saveBtn.textContent = "Simpan";
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "secondary-button small";
-  cancelBtn.textContent = "Batal";
-
-  const cancel = () => {
-    row.dataset.editing = "false";
-    labelTd.textContent = original;
-    actionTd.replaceChildren(...prevActions);
-  };
-
-  const save = async () => {
-    const newLabel = input.value.trim();
-    if (!newLabel) { input.focus(); return; }
-    if (newLabel === original) { cancel(); return; }
-    saveBtn.disabled = true;
-    cancelBtn.disabled = true;
-    const ok = await updateBaseItemSetting(item.key, { label: newLabel }, saveBtn, { silentDisable: true });
-    saveBtn.disabled = false;
-    cancelBtn.disabled = false;
-    if (!ok) return;
-  };
-
-  saveBtn.addEventListener("click", save);
-  cancelBtn.addEventListener("click", cancel);
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); save(); }
-    if (e.key === "Escape") { e.preventDefault(); cancel(); }
-  });
-
-  actionTd.append(saveBtn, cancelBtn);
-}
-
-async function updateBaseItemSetting(key, patch, btn, opts = {}) {
-  setBaseItemsMessage("");
-  if (btn && !opts.silentDisable) btn.disabled = true;
-  const payload = { ...patch, updated_at: new Date().toISOString() };
-  const { error } = await supabase.from("base_item_settings").update(payload).eq("key", key);
-  if (btn && !opts.silentDisable) btn.disabled = false;
-  if (error) {
-    const msg = `Gagal memperbarui item bawaan: ${error.message}`;
-    setBaseItemsMessage(msg, "error");
-    return false;
-  }
-  await loadBaseItemSettings();
-  render();
-  if (currentProfile?.role !== "user") {
-    await renderAdminPanels();
-  } else {
-    renderBaseItemsManager();
-  }
-  setBaseItemsMessage("Pengaturan item bawaan diperbarui.", "success");
-  return true;
-}
-
-async function swapBaseItemOrder(a, b, btn) {
-  setBaseItemsMessage("");
-  if (btn) btn.disabled = true;
-  const now = new Date().toISOString();
-  const [r1, r2] = await Promise.all([
-    supabase.from("base_item_settings").update({ sort_order: b.sort_order, updated_at: now }).eq("key", a.key),
-    supabase.from("base_item_settings").update({ sort_order: a.sort_order, updated_at: now }).eq("key", b.key),
-  ]);
-  if (btn) btn.disabled = false;
-  const error = r1.error || r2.error;
-  if (error) {
-    setBaseItemsMessage(`Gagal mengubah urutan: ${error.message}`, "error");
-    return;
-  }
-  await loadBaseItemSettings();
-  render();
-  await renderAdminPanels();
-  setBaseItemsMessage("Urutan item bawaan diperbarui.", "success");
 }
 
 function renderRoleManagement(profiles) {
@@ -1682,14 +1270,8 @@ function downloadCsvRows(rows, filename) {
 
 function downloadSummary() {
   const applicable = applicableItemsForSelf();
-  const activeBase = activeBaseItems();
   const header = ["Tanggal"];
-  activeBase.forEach((item) => {
-    if (item.key === "prayer_count") header.push(`${item.label} (jumlah)`);
-    else if (item.key === "quran_pages") header.push(`${item.label} (halaman)`);
-    else header.push(item.label);
-  });
-  header.push(...applicable.map((i) => i.label));
+  header.push(...applicable.map((item) => item.label));
   header.push("Target selesai", "Progres harian", "Catatan");
 
   const rows = [header];
@@ -1702,11 +1284,6 @@ function downloadSummary() {
     const completed = completedCountForSelf(data);
     const total = totalTargetsForSelf();
     const row = [key];
-    activeBase.forEach((item) => {
-      if (item.key === "prayer_count") row.push(Number(data.prayer_count) || 0);
-      else if (item.key === "quran_pages") row.push(Number(data.quran_pages) || 0);
-      else row.push(data[item.key] ? "Ya" : "Tidak");
-    });
     applicable.forEach((i) => {
       const value = customItemValue(data, i.id);
       row.push(i.input_type === "check" ? (isCustomItemDone(data, i) ? "Ya" : "Tidak") : value);
@@ -1722,7 +1299,6 @@ function downloadSummary() {
 function downloadRecap() {
   if (!adminRecapRows.length) return;
   const showManager = currentProfile?.role === "super_admin";
-  const activeBase = activeBaseItems();
   const dayCount = inclusiveDayCount(adminRecapRange.from, adminRecapRange.to);
   const rangeLabel = formatRangeLabel(adminRecapRange.from, adminRecapRange.to);
   const customLabels = new Map();
@@ -1734,22 +1310,12 @@ function downloadRecap() {
   });
   const header = ["Nama", "Email"];
   if (showManager) header.push("Dikelola oleh");
-  activeBase.forEach((item) => {
-    if (item.key === "prayer_count") header.push(`${item.label} (${rangeLabel})`);
-    else if (item.key === "quran_pages") header.push(`${item.label} (${rangeLabel})`);
-    else header.push(`${item.label} (${rangeLabel})`);
-  });
   customLabels.forEach((label) => header.push(`${label} (${rangeLabel})`));
   header.push(`Target selesai (${rangeLabel})`, `Target maksimum (${rangeLabel})`, `Progres (${rangeLabel})`);
 
   const rows = [header, ...adminRecapRows.map((r) => {
     const row = [r.name, r.email];
     if (showManager) row.push(r.manager);
-    activeBase.forEach((item) => {
-      if (item.key === "prayer_count") row.push(`${r.base[item.key] || 0}/${dayCount * 5}`);
-      else if (item.key === "quran_pages") row.push(String(r.base[item.key] || 0));
-      else row.push(`${r.base[item.key] || 0}/${dayCount}`);
-    });
     customLabels.forEach((label, id) => row.push(String(r.custom?.[id] ?? "-")));
     row.push(String(r.done), String(r.denom), `${r.pct}%`);
     return row;
@@ -1855,7 +1421,7 @@ async function handleCreateCustomItem(event) {
     });
     if (error) throw error;
     $("customItemForm").reset();
-    setCustomItemMessage("Item tugas berhasil ditambahkan.", "success");
+    setCustomItemMessage("Item isian berhasil ditambahkan.", "success");
     await loadCustomItems();
     render();
     await renderAdminPanels();
@@ -1872,7 +1438,6 @@ async function bootstrapSession(session) {
     currentProfile = null;
     allVisibleProfiles = [];
     allVisibleCustomItems = [];
-    baseItemSettings = defaultBaseItemSettings();
     currentEntry = emptyEntry();
     weekEntries = [];
     adminRecapRows = [];
@@ -1891,7 +1456,7 @@ async function bootstrapSession(session) {
   }
   showView(true);
   updateRoleSections();
-  await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+  await loadCustomItems();
   await Promise.all([loadEntry(), loadWeekEntries()]);
   render();
   setSaveStatus("Tersimpan");
@@ -1921,7 +1486,7 @@ function bindEvents() {
     });
     window.setInterval(async () => {
       if (document.hidden || currentProfile?.role === "user") return;
-      await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+      await loadCustomItems();
       await renderAdminPanels();
     }, 30000);
   }
@@ -1968,7 +1533,7 @@ function bindEvents() {
       from: recapPeriod.value === "day" ? recapFrom.value : from,
       to: recapPeriod.value === "day" ? recapFrom.value : to,
     };
-    await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+    await loadCustomItems();
     await renderAdminPanels();
   });
 
@@ -1997,7 +1562,7 @@ function bindEvents() {
   });
 
   $("refreshAdmin").addEventListener("click", async () => {
-    await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+    await loadCustomItems();
     render();
     await renderAdminPanels();
   });

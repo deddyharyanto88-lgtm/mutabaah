@@ -174,13 +174,13 @@
         <section class="admin-card" id="customItemsSection" hidden>
           <div class="section-title">
             <div>
-              <p class="section-label">Item Tugas</p>
-              <h2>Item isian tambahan</h2>
+              <p class="section-label">Kelola Mutabaah</p>
+              <h2>Item isian</h2>
             </div>
           </div>
           <p class="admin-hint" id="customItemsHint"></p>
           <form id="customItemForm" class="create-form custom-item-form">
-            <label class="grow"><span>Nama item tugas</span><input id="customItemLabel" type="text" autocomplete="off" placeholder="Contoh: Shalat Dhuha, Puasa Senin-Kamis" required /></label>
+            <label class="grow"><span>Nama item isian</span><input id="customItemLabel" type="text" autocomplete="off" placeholder="Contoh: Salat wajib, Tilawah, Dzikir" required /></label>
             <label><span>Jenis input</span>
               <select id="customItemType">
                 <option value="check">Checklist</option>
@@ -188,22 +188,10 @@
                 <option value="text">Isi manual (teks)</option>
               </select>
             </label>
-            <button type="submit" class="primary-button" id="customItemSubmit">Tambah item</button>
+            <button type="submit" class="primary-button" id="customItemSubmit">Tambah item isian</button>
           </form>
           <p class="auth-message" id="customItemMessage" aria-live="polite"></p>
           <div class="admin-table-wrap" id="customItemsList"></div>
-        </section>
-
-        <section class="admin-card" id="baseItemsSection" hidden>
-          <div class="section-title">
-            <div>
-              <p class="section-label">Super Admin</p>
-              <h2>Item bawaan</h2>
-            </div>
-          </div>
-          <p class="admin-hint">Atur label, aktif/nonaktif, dan urutan item bawaan mutabaah (tipe input tetap: salat 0–5, tilawah halaman, dzikir/sedekah checklist). Item nonaktif disembunyikan dan tidak dihitung dalam target/progres/ringkasan/rekap, namun data historis tetap tersimpan.</p>
-          <p class="auth-message" id="baseItemsMessage" aria-live="polite"></p>
-          <div class="admin-table-wrap" id="baseItemsList"></div>
         </section>
 
         <section class="admin-card" id="superAdminSection" hidden>
