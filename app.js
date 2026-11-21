@@ -33,6 +33,7 @@ let baseItemSettings = defaultBaseItemSettings();
 let currentEntry = emptyEntry();
 let weekEntries = [];
 let adminRecapRows = [];
+let adminRecapRange = null;
 let saveTimer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -53,6 +54,36 @@ const sevenDaysAgoKey = () => {
   d.setDate(d.getDate() - 6);
   return dateKey(d);
 };
+
+adminRecapRange = {
+  period: "week",
+  from: sevenDaysAgoKey(),
+  to: dateKey(new Date()),
+};
+
+function parseDateKey(key) {
+  const [year, month, day] = String(key).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function addDaysToKey(key, amount) {
+  const date = parseDateKey(key);
+  date.setDate(date.getDate() + amount);
+  return dateKey(date);
+}
+
+function inclusiveDayCount(from, to) {
+  const fromDate = parseDateKey(from);
+  const toDate = parseDateKey(to);
+  const milliseconds = Date.UTC(toDate.getFullYear(), toDate.getMonth(), toDate.getDate())
+    - Date.UTC(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+  return Math.max(1, Math.floor(milliseconds / 86400000) + 1);
+}
+
+function formatRangeLabel(from, to) {
+  if (from === to) return from;
+  return `${from} s/d ${to}`;
+}
 
 function setSaveStatus(text) {
   const el = $("saveStatus");
@@ -261,7 +292,7 @@ function updateRoleSections() {
   $("superAdminSection").hidden = !isSuper;
 
   if (isAdmin) {
-    $("adminRecapTitle").textContent = "Rekap user di bawah saya (7 hari terakhir)";
+    $("adminRecapTitle").textContent = `Rekap user di bawah saya (${formatRangeLabel(adminRecapRange.from, adminRecapRange.to)})`;
     $("adminHint").textContent = "Menampilkan rekap mutabaah user yang Anda kelola (di bawah Anda), termasuk item tugas tambahan yang berlaku dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk user. Akun akan berada di bawah pengelolaan Anda.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi atau hapus user yang Anda kelola. Penghapusan akun menghapus seluruh data mutabaah user tersebut.";
@@ -269,7 +300,7 @@ function updateRoleSections() {
     $("newUserRoleField").hidden = true;
     $("newUserRole").value = "user";
   } else if (isSuper) {
-    $("adminRecapTitle").textContent = "Rekap semua user (7 hari terakhir)";
+    $("adminRecapTitle").textContent = `Rekap semua user (${formatRangeLabel(adminRecapRange.from, adminRecapRange.to)})`;
     $("adminHint").textContent = "Menampilkan rekap semua user (di bawah admin dan super admin), termasuk item tugas tambahan dan konfigurasi item bawaan aktif.";
     $("createAccountHint").textContent = "Buat akun baru untuk admin atau user.";
     $("credentialManagementHint").textContent = "Ubah ID login/kata sandi, hapus akun user/admin, atau pindahkan user ke admin lain. Penghapusan akun menghapus data mutabaah terkait; pemindahan mempertahankan seluruh riwayat mutabaah.";
@@ -803,8 +834,8 @@ function groupEntriesByUser(entries) {
 
 async function renderAdminPanels() {
   if (!currentProfile || currentProfile.role === "user") return;
-  const from = sevenDaysAgoKey();
-  const to = dateKey(new Date());
+  const from = adminRecapRange.from;
+  const to = adminRecapRange.to;
 
   const profilesRes = await supabase
     .from("profiles")
@@ -858,6 +889,13 @@ function renderAdminSummary(users, byUser) {
   adminRecapRows = [];
   const activeBase = activeBaseItems();
   const showManager = currentProfile.role === "super_admin";
+  const dayCount = inclusiveDayCount(adminRecapRange.from, adminRecapRange.to);
+  const rangeLabel = formatRangeLabel(adminRecapRange.from, adminRecapRange.to);
+  const periodLabel = `(${rangeLabel})`;
+  const title = $("adminRecapTitle");
+  title.textContent = currentProfile.role === "admin"
+    ? `Rekap user di bawah saya ${periodLabel}`
+    : `Rekap semua user ${periodLabel}`;
   const customItems = [];
   const customItemMap = new Map();
   users.forEach((profile) => {
@@ -883,12 +921,12 @@ function renderAdminSummary(users, byUser) {
   headRow.append(th("Pengguna"));
   if (showManager) headRow.append(th("Dikelola oleh"));
   activeBase.forEach((item) => {
-    if (item.key === "prayer_count") headRow.append(th(`${item.label} (7h)`));
-    else if (item.key === "quran_pages") headRow.append(th(`${item.label} (7h)`));
-    else headRow.append(th(`${item.label} (7h)`));
+    if (item.key === "prayer_count") headRow.append(th(`${item.label} (${dayCount} hari)`));
+    else if (item.key === "quran_pages") headRow.append(th(`${item.label} (${dayCount} hari)`));
+    else headRow.append(th(`${item.label} (${dayCount} hari)`));
   });
-  customItems.forEach((item) => headRow.append(th(`${item.label} (7h)`)));
-  headRow.append(th("Target (7h)"));
+  customItems.forEach((item) => headRow.append(th(`${item.label} (${dayCount} hari)`)));
+  headRow.append(th(`Target (${dayCount} hari)`));
   thead.append(headRow);
   table.append(thead);
 
@@ -898,7 +936,7 @@ function renderAdminSummary(users, byUser) {
     const list = byUser.get(String(p.id)) || [];
     const perDay = totalTargetsForProfile(p);
     const done = list.reduce((s, e) => s + completedCountForProfile(e, p), 0);
-    const denom = 7 * perDay;
+    const denom = dayCount * perDay;
     const pct = denom ? Math.round((done / denom) * 100) : 0;
     const manager = p.created_by ? profileMap.get(String(p.created_by)) : null;
     const managerLabel = manager
@@ -926,7 +964,7 @@ function renderAdminSummary(users, byUser) {
       if (item.key === "prayer_count") {
         const prayer = list.reduce((s, e) => s + Number(e.prayer_count || 0), 0);
         recap.base[item.key] = prayer;
-        tr.append(cell(`${prayer} / 35`));
+        tr.append(cell(`${prayer} / ${dayCount * 5}`));
       } else if (item.key === "quran_pages") {
         const pages = list.reduce((s, e) => s + Number(e.quran_pages || 0), 0);
         recap.base[item.key] = pages;
@@ -934,7 +972,7 @@ function renderAdminSummary(users, byUser) {
       } else {
         const doneCount = list.filter((e) => Boolean(e[item.key])).length;
         recap.base[item.key] = doneCount;
-        tr.append(cell(`${doneCount} / 7`));
+        tr.append(cell(`${doneCount} / ${dayCount}`));
       }
     });
 
@@ -959,10 +997,10 @@ function renderAdminSummary(users, byUser) {
           const value = customItemValue(entry, item.id);
           return typeof value === "string" && value.trim() !== "";
         }).length;
-        display = `${filled} / 7`;
+        display = `${filled} / ${dayCount}`;
       } else {
         const checked = list.filter((entry) => isCustomItemDone(entry, item)).length;
-        display = `${checked} / 7`;
+        display = `${checked} / ${dayCount}`;
       }
       recap.custom[key] = display;
       tr.append(cell(display));
@@ -1683,6 +1721,8 @@ function downloadRecap() {
   if (!adminRecapRows.length) return;
   const showManager = currentProfile?.role === "super_admin";
   const activeBase = activeBaseItems();
+  const dayCount = inclusiveDayCount(adminRecapRange.from, adminRecapRange.to);
+  const rangeLabel = formatRangeLabel(adminRecapRange.from, adminRecapRange.to);
   const customLabels = new Map();
   adminRecapRows.forEach((recap) => {
     Object.keys(recap.custom || {}).forEach((id) => {
@@ -1693,26 +1733,29 @@ function downloadRecap() {
   const header = ["Nama", "Email"];
   if (showManager) header.push("Dikelola oleh");
   activeBase.forEach((item) => {
-    if (item.key === "prayer_count") header.push(`${item.label} (7 hari)`);
-    else if (item.key === "quran_pages") header.push(`${item.label} (7 hari)`);
-    else header.push(`${item.label} (7 hari)`);
+    if (item.key === "prayer_count") header.push(`${item.label} (${rangeLabel})`);
+    else if (item.key === "quran_pages") header.push(`${item.label} (${rangeLabel})`);
+    else header.push(`${item.label} (${rangeLabel})`);
   });
-  customLabels.forEach((label) => header.push(`${label} (7 hari)`));
-  header.push("Target selesai (7 hari)", "Target maksimum (7 hari)", "Progres (7 hari)");
+  customLabels.forEach((label) => header.push(`${label} (${rangeLabel})`));
+  header.push(`Target selesai (${rangeLabel})`, `Target maksimum (${rangeLabel})`, `Progres (${rangeLabel})`);
 
   const rows = [header, ...adminRecapRows.map((r) => {
     const row = [r.name, r.email];
     if (showManager) row.push(r.manager);
     activeBase.forEach((item) => {
-      if (item.key === "prayer_count") row.push(`${r.base[item.key] || 0}/35`);
+      if (item.key === "prayer_count") row.push(`${r.base[item.key] || 0}/${dayCount * 5}`);
       else if (item.key === "quran_pages") row.push(String(r.base[item.key] || 0));
-      else row.push(`${r.base[item.key] || 0}/7`);
+      else row.push(`${r.base[item.key] || 0}/${dayCount}`);
     });
     customLabels.forEach((label, id) => row.push(String(r.custom?.[id] ?? "-")));
     row.push(String(r.done), String(r.denom), `${r.pct}%`);
     return row;
   })];
-  downloadCsvRows(rows, `rekap-mutabaah-${dateKey(new Date())}.csv`);
+  const rangeSuffix = adminRecapRange.from === adminRecapRange.to
+    ? adminRecapRange.from
+    : `${adminRecapRange.from}_sd_${adminRecapRange.to}`;
+  downloadCsvRows(rows, `rekap-mutabaah-${rangeSuffix}.csv`);
 }
 
 async function shiftDate(amount) {
@@ -1856,6 +1899,52 @@ async function bootstrapSession(session) {
 function bindEvents() {
   $("authForm").addEventListener("submit", handleAuthSubmit);
   $("logoutButton").addEventListener("click", async () => { await supabase.auth.signOut(); });
+
+  const recapPeriod = $("recapPeriod");
+  const recapFrom = $("recapFrom");
+  const recapTo = $("recapTo");
+  recapFrom.value = adminRecapRange.from;
+  recapTo.value = adminRecapRange.to;
+
+  recapPeriod.addEventListener("change", () => {
+    const today = new Date();
+    const todayKey = dateKey(today);
+    if (recapPeriod.value === "day") {
+      recapFrom.value = todayKey;
+      recapTo.value = todayKey;
+    } else if (recapPeriod.value === "week") {
+      recapFrom.value = addDaysToKey(todayKey, -6);
+      recapTo.value = todayKey;
+    } else if (recapPeriod.value === "month") {
+      const first = new Date(today.getFullYear(), today.getMonth(), 1);
+      const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      recapFrom.value = dateKey(first);
+      recapTo.value = dateKey(last);
+    }
+  });
+
+  $("applyRecapRange").addEventListener("click", async () => {
+    const from = recapFrom.value;
+    const to = recapTo.value;
+    if (!from || !to) {
+      $("adminUsersSummary").textContent = "Pilih tanggal mulai dan tanggal selesai.";
+      return;
+    }
+    if (from > to) {
+      $("adminUsersSummary").textContent = "Tanggal mulai tidak boleh setelah tanggal selesai.";
+      return;
+    }
+    if (recapPeriod.value === "day") {
+      recapTo.value = recapFrom.value;
+    }
+    adminRecapRange = {
+      period: recapPeriod.value,
+      from: recapPeriod.value === "day" ? recapFrom.value : from,
+      to: recapPeriod.value === "day" ? recapFrom.value : to,
+    };
+    await Promise.all([loadBaseItemSettings(), loadCustomItems()]);
+    await renderAdminPanels();
+  });
 
   $("previousDay").addEventListener("click", () => shiftDate(-1));
   $("nextDay").addEventListener("click", () => shiftDate(1));

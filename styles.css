@@ -86,6 +86,10 @@ h1 em { color: var(--teal); font-style: normal; }
 .auth-message.success { color: #1f7a5a; }
 .config-warning { margin: 14px 0 0; padding: 10px 12px; border: 1px solid #efcf8b; border-radius: 10px; color: #7a5a16; background: #fbf3de; font-size: 13px; }
 .admin-hint { margin: -4px 0 14px; color: var(--muted); font-size: 13px; }
+.recap-filter { display: flex; align-items: end; gap: 10px; margin: 0 0 14px; }
+.recap-filter label { display: grid; gap: 6px; min-width: 150px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.recap-filter select, .recap-filter input { width: 100%; height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: #fbfcfa; font: inherit; }
+.recap-filter .secondary-button { height: 40px; white-space: nowrap; }
 .admin-table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin-table th, .admin-table td { padding: 11px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
@@ -192,5 +196,8 @@ footer { display: flex; justify-content: center; gap: 10px; margin-top: 54px; co
   .status-name { font-size: 10px; }
   .create-form.single { grid-template-columns: 1fr; }
   .create-form.custom-item-form { grid-template-columns: 1fr; }
+  .recap-filter { display: grid; grid-template-columns: 1fr 1fr; align-items: end; }
+  .recap-filter label { min-width: 0; }
+  .recap-filter .secondary-button { grid-column: 1 / -1; width: 100%; }
   .status-dot { height: 26px; border-radius: 7px; font-size: 12px; }
 }

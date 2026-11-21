@@ -113,6 +113,26 @@
             </div>
           </div>
           <p class="admin-hint" id="adminHint"></p>
+          <div class="recap-filter" aria-label="Filter periode rekap">
+            <label>
+              <span>Jenis rekap</span>
+              <select id="recapPeriod">
+                <option value="day">Harian</option>
+                <option value="week" selected>Mingguan</option>
+                <option value="month">Bulanan</option>
+                <option value="custom">Rentang khusus</option>
+              </select>
+            </label>
+            <label>
+              <span>Dari tanggal</span>
+              <input id="recapFrom" type="date" />
+            </label>
+            <label>
+              <span>Sampai tanggal</span>
+              <input id="recapTo" type="date" />
+            </label>
+            <button class="secondary-button" id="applyRecapRange" type="button">Terapkan</button>
+          </div>
           <div class="admin-table-wrap" id="adminUsersSummary"></div>
         </section>
 
