@@ -177,6 +177,18 @@ h2 { margin: 0; font-size: 21px; letter-spacing: -.5px; }
 .notes-card textarea { width: 100%; min-height: 150px; resize: vertical; padding: 14px; border: 1px solid var(--line); border-radius: 10px; outline: none; color: var(--ink); background: #fbfcfa; font-size: 13px; line-height: 1.5; }
 .notes-card textarea:focus { border-color: #91c6b7; box-shadow: 0 0 0 3px #e4f2ed; }
 .save-status { display: block; margin-top: 9px; color: #94a49f; font-size: 11px; }
+.user-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: #eef7f3; font-size: 11px; font-weight: 700; color: #31534d; }
+.user-chip-id { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; letter-spacing: .02em; }
+.user-chip-sep { color: var(--gold); }
+.user-chip-role { padding: 2px 8px; border-radius: 999px; background: var(--teal); color: #fff; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.motivation-slider { margin-top: 44px; padding: 26px 22px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, #f4faf6, #fdf8ec); text-align: center; }
+.motivation-label { margin: 0 0 12px; }
+.motivation-slides { position: relative; min-height: 64px; display: grid; place-items: center; }
+.motivation-slide { position: absolute; max-width: 640px; margin: 0; opacity: 0; transform: translateY(8px); transition: opacity .6s ease, transform .6s ease; font-family: "Playfair Display", serif; font-size: 16px; font-style: italic; line-height: 1.55; color: #33504a; pointer-events: none; }
+.motivation-slide.active { position: relative; opacity: 1; transform: translateY(0); pointer-events: auto; }
+.motivation-dots { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.motivation-dot { width: 7px; height: 7px; border-radius: 50%; background: #cfdcd6; transition: background .3s ease, transform .3s ease; }
+.motivation-dot.active { background: var(--gold); transform: scale(1.25); }
 footer { display: flex; justify-content: center; gap: 10px; margin-top: 54px; color: #91a19e; font-size: 11px; }
 .footer-dot { color: var(--gold); }
 @media (max-width: 700px) {
