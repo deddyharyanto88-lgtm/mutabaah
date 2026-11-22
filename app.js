@@ -25,6 +25,114 @@ let adminRecapRange = null;
 let saveTimer = null;
 let recapChannel = null;
 
+const motivationQuotes = [
+  "Setiap kebaikan yang kamu lakukan, sekecil apa pun, akan kamu dapati balasannya di sisi Allah. (QS. Al-Muzzammil: 9)",
+  "Senyummu di hadapan saudaramu adalah sedekah. Jangan pernah meremehkan kebaikan kecil.",
+  "Amalan yang paling dicintai Allah adalah yang paling konsisten, meskipun sedikit. (HR. Bukhari & Muslim)",
+  "Sebaik-baik manusia adalah yang paling bermanfaat bagi manusia lainnya. (HR. Ahmad)",
+  "Bantulah orang lain hari ini — Allah akan membantumu di saat-saat tersulitmu.",
+  "Barangsiapa menempuh jalan untuk mencari ilmu, Allah memudahkan baginya jalan menuju surga. (HR. Muslim)",
+  "Sayangilah yang di bumi, niscaya yang di langit akan menyayangimu. (HR. Tirmidzi)",
+  "Jangan memandang remeh kebaikan, walau hanya memberi air kepada hewan yang kehausan.",
+  "Kalimat yang baik itu sedekah. Tersenyumlah, mendoakan, dan berbicara dengan lembut hari ini.",
+  "Seorang muslim adalah saudara muslim lainnya; tidak menzalimi dan tidak membiarkannya dalam kesulitan. (HR. Bukhari & Muslim)",
+  "Perbanyaklah ucapan syukur — nikmat yang disyukuri akan Allah tambahkan keberkahannya.",
+  "Tersingkapnya gangguan dari jalan manusia adalah sedekah. Masih ada kesempatan berbuat baik hari ini.",
+  "Allah tidak menyia-nyiakan pahala orang-orang yang berbuat kebaikan. (QS. Hud: 115)",
+  "Mulai hari ini dengan niat: jadikan langkah kecilmu bermakna di hadapan Allah.",
+  "Sampaikan kebaikan walau satu ayat. Ilmu yang dibagikan akan menjadi amal yang mengalir.",
+  "Hapuslah duri, batu, atau kotoran dari jalan — itu termasuk cabang keimanan.",
+  "Berbuat baiklah kepada tetanggamu, walau hanya dengan sapaan dan bantuan kecil.",
+  "Doa seorang muslim untuk saudaranya tanpa ia ketahui akan dikabulkan. Doakan orang yang kamu sayangi hari ini.",
+  "Rezeki seseorang tidak akan salah alamat. Bersedekahlah tanpa takut kekurangan.",
+  "Orang kuat bukan yang menang bergulat, tetapi yang mampu menahan amarahnya. (HR. Bukhari & Muslim)",
+  "Balaslah keburukan dengan kebaikan, niscaya permusuhan berubah menjadi persahabatan.",
+  "Isilah waktumu dengan amal, karena esok kita akan menyesali hari-hari yang terlewat tanpa kebaikan.",
+];
+
+let motivationOrder = [];
+let motivationIndex = 0;
+let motivationTimer = null;
+const MOTIVATION_INTERVAL_MS = 10000;
+
+function shuffleIndices(length) {
+  const arr = Array.from({ length }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function renderMotivationSlides() {
+  const wrap = $("motivationSlides");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  motivationOrder.forEach((quoteIdx, slideIdx) => {
+    const slide = document.createElement("div");
+    slide.className = `motivation-slide${slideIdx === motivationIndex ? " active" : ""}`;
+    slide.textContent = motivationQuotes[quoteIdx];
+    wrap.appendChild(slide);
+  });
+  const dots = $("motivationDots");
+  if (dots) {
+    dots.innerHTML = "";
+    motivationOrder.forEach((_, dotIdx) => {
+      const dot = document.createElement("span");
+      dot.className = `motivation-dot${dotIdx === motivationIndex ? " active" : ""}`;
+      dots.appendChild(dot);
+    });
+  }
+}
+
+function showMotivationSlide(nextIndex) {
+  const slides = $("motivationSlides")?.children;
+  const dots = $("motivationDots")?.children;
+  if (!slides || !slides.length) return;
+  slides[motivationIndex]?.classList.remove("active");
+  dots[motivationIndex]?.classList.remove("active");
+  motivationIndex = nextIndex % slides.length;
+  slides[motivationIndex]?.classList.add("active");
+  dots[motivationIndex]?.classList.add("active");
+}
+
+function startMotivationRotation() {
+  stopMotivationRotation();
+  if (!$("motivationSlider")) return;
+  motivationOrder = shuffleIndices(motivationQuotes.length);
+  motivationIndex = 0;
+  renderMotivationSlides();
+  motivationTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    if (motivationIndex >= motivationOrder.length - 1) {
+      // Semua quote sudah tampil pada putaran ini — acak ulang agar tetap bergilir random.
+      motivationOrder = shuffleIndices(motivationQuotes.length);
+      renderMotivationSlides();
+      showMotivationSlide(0);
+    } else {
+      showMotivationSlide(motivationIndex + 1);
+    }
+  }, MOTIVATION_INTERVAL_MS);
+}
+
+function stopMotivationRotation() {
+  if (motivationTimer) {
+    window.clearInterval(motivationTimer);
+    motivationTimer = null;
+  }
+}
+
+function updateUserChip() {
+  const chip = $("userChip");
+  if (!chip) return;
+  const loggedIn = Boolean(currentUser && currentProfile);
+  chip.hidden = !loggedIn;
+  if (!loggedIn) return;
+  const loginId = currentProfile.login_id || currentUser.email || currentUser.id;
+  $("userChipId").textContent = `ID: ${loginId}`;
+  $("userChipRole").textContent = roleLabel(currentProfile.role);
+}
+
 const $ = (id) => document.getElementById(id);
 
 function emptyEntry() {
@@ -234,6 +342,10 @@ function showView(loggedIn) {
   $("appSection").hidden = !loggedIn;
   $("appActions").hidden = !loggedIn;
   $("userArea").hidden = !loggedIn;
+  const slider = $("motivationSlider");
+  if (slider) slider.hidden = !loggedIn;
+  if (loggedIn) startMotivationRotation();
+  else stopMotivationRotation();
 }
 
 function updateRoleSections() {
@@ -1642,6 +1754,7 @@ async function bootstrapSession(session) {
     weekEntries = [];
     adminRecapRows = [];
     showView(false);
+    updateUserChip();
     return;
   }
   currentUser = session.user;
@@ -1655,6 +1768,7 @@ async function bootstrapSession(session) {
     return;
   }
   showView(true);
+  updateUserChip();
   updateRoleSections();
   await Promise.all([loadCustomItems(), loadBaseItemSettings()]);
   await Promise.all([loadEntry(), loadWeekEntries()]);

@@ -24,6 +24,11 @@
           </span>
         </a>
         <div class="topbar-right">
+          <div class="user-chip" id="userChip" hidden>
+            <span class="user-chip-id" id="userChipId">ID: -</span>
+            <span class="user-chip-sep" aria-hidden="true">•</span>
+            <span class="user-chip-role" id="userChipRole">User</span>
+          </div>
           <div class="topbar-actions" id="appActions" hidden>
             <button class="summary-button" id="summaryToggle" type="button" aria-expanded="false">Lihat summary</button>
             <button class="today-button" id="todayButton" type="button">Hari ini</button>
@@ -235,6 +240,12 @@
           </aside>
         </section>
       </div>
+
+      <section class="motivation-slider" id="motivationSlider" hidden aria-live="polite">
+        <p class="section-label motivation-label">Motivasi hari ini</p>
+        <div class="motivation-slides" id="motivationSlides"></div>
+        <div class="motivation-dots" id="motivationDots" aria-hidden="true"></div>
+      </section>
 
       <footer>
         <span>“Amalan yang paling dicintai Allah adalah yang paling konsisten.”</span>
